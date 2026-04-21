@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CashFlow Spa — Gastos</title>
+<link rel="stylesheet" href="src/tokens.css"/>
+<style>
+  html,body{margin:0;padding:0;height:100%}
+  body{background:#f0eee9;font-family:'Geist',-apple-system,system-ui,sans-serif}
+  #root{height:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="src/primitives.jsx"></script>
+<script type="text/babel" src="src/sidebar.jsx"></script>
+<script type="text/babel" src="src/gastos-data.jsx"></script>
+<script type="text/babel" src="src/screen-gastos-list.jsx"></script>
+<script type="text/babel" src="src/screen-gastos-form.jsx"></script>
+<script type="text/babel" src="src/screen-gastos-detalle.jsx"></script>
+<script type="text/babel" src="src/screen-gastos-resumen.jsx"></script>
+<script type="text/babel" src="src/screen-config-combined.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const W=1366, H=1024;
+
+function DashboardRefCard(){
+  return (
+    <div style={{width:'100%',height:'100%',background:'#faf8f3',padding:'36px 40px',fontFamily:'var(--sans)',display:'flex',flexDirection:'column',gap:18,border:'2px dashed #d8cfbe'}}>
+      <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--clay)'}}>Referencia · vive en Dashboard</div>
+      <div style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.6,color:'var(--ink-0)',lineHeight:1.1}}>
+        Saldos por cuenta y moneda se movió al Dashboard maestro
+      </div>
+      <div style={{fontSize:13.5,color:'var(--ink-2)',lineHeight:1.6,maxWidth:560}}>
+        El balance de tesorería no pertenece solo al módulo Gastos — es parte del análisis general del negocio (ingresos del PV + egresos de Gastos + saldos por cuenta). Se diseñará como sección principal del Dashboard cuando entremos a ese módulo.
+      </div>
+      <div style={{marginTop:8,padding:'16px 20px',background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',flexDirection:'column',gap:8,maxWidth:460}}>
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)'}}>Preview del bloque</div>
+        <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)'}}>Tesorería</div>
+        <div style={{display:'flex',gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:'var(--ink-3)'}}>MXN</div>
+            <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:500}} className="num">$256,570</div>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:'var(--ink-3)'}}>USD</div>
+            <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:500}} className="num">$420 ≈ $9.6k</div>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:'var(--ink-3)'}}>CAD</div>
+            <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:500}} className="num">$180 ≈ $3.1k</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="gastos" title="Módulo Gastos · feat/gastos" subtitle="iPad horizontal · gastos independientes (no afectan caja de turno)">
+        <DCArtboard id="list" label="01 · Lista de gastos (historial filtrable)" width={W} height={H+180}>
+          <GastosList/>
+        </DCArtboard>
+        <DCArtboard id="form" label="02 · Nuevo gasto (captura compacta · un solo cuadro)" width={W} height={H+100}>
+          <GastosForm/>
+        </DCArtboard>
+        <DCArtboard id="detalle" label="03 · Detalle de gasto (ver / editar)" width={W} height={H+100}>
+          <GastosDetalle/>
+        </DCArtboard>
+        <DCArtboard id="resumen" label="04 · Resumen por categoría + periodo" width={W} height={H+240}>
+          <GastosResumen/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="config" title="Configuración · Catálogos agrupados" subtitle="Menos pantallas, más densidad · tabs dentro de cada pantalla">
+        <DCArtboard id="cuentas-monedas" label="05 · Cuentas y monedas (tabs)" width={W} height={H+100}>
+          <CuentasMonedas/>
+        </DCArtboard>
+        <DCArtboard id="catalogo-gastos" label="06 · Catálogo de gastos · Conceptos (colapsables) + Categorías" width={W} height={H+240}>
+          <CatalogoGastos/>
+        </DCArtboard>
+        <DCArtboard id="servicios-comisiones" label="07 · Servicios y comisiones · shell con 3 canales" width={W} height={H+200}>
+          <ServiciosComisiones/>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="dashboard-ref" title="Referencia · Dashboard maestro" subtitle="Lo que NO pertenece al módulo de gastos">
+        <DCArtboard id="dashboard-saldos" label="Nota · Saldos vive en Dashboard (fuera de scope)" width={900} height={420}>
+          <DashboardRefCard/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
