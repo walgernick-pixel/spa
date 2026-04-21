@@ -1,0 +1,26 @@
+# Archivos ignorados por git
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Local environment
+.env
+.env.local
+
+# Builds
+dist/
+build/
+.netlify/
+
+# Uploads / respaldos temporales
+respaldos/
+backup-*/

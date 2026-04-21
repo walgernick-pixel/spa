@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Spa CashFlow</title>
+<style>
+  :root{
+    --paper:#f5f1e8; --paper-2:#ede7d8; --ink:#2a2622; --ink-2:#6b5f52;
+    --clay:#b66a4a; --moss:#6b7d4a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    display:grid;
+    place-items:center;
+    padding:24px;
+  }
+  .card{
+    max-width:560px;
+    width:100%;
+    background:#fff;
+    border:1px solid #e2dcce;
+    border-radius:16px;
+    padding:40px 36px;
+    box-shadow:0 4px 20px rgba(60,40,20,.06);
+  }
+  h1{
+    font-family:Georgia,serif;
+    font-size:32px;
+    font-weight:500;
+    letter-spacing:-0.6px;
+    margin-bottom:8px;
+  }
+  .sub{color:var(--ink-2); font-size:14px; margin-bottom:28px}
+  .row{
+    display:flex; gap:10px; padding:14px 16px;
+    background:var(--paper); border-radius:10px; margin-bottom:10px;
+    text-decoration:none; color:var(--ink);
+    border:1px solid transparent; transition:all .15s;
+  }
+  .row:hover{border-color:var(--clay); background:#fff}
+  .row .t{font-weight:600; font-size:14px}
+  .row .d{font-size:12px; color:var(--ink-2); margin-top:2px}
+  .row .arr{margin-left:auto; color:var(--clay); font-weight:600}
+  .foot{margin-top:24px; font-size:11px; color:var(--ink-2); text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Spa CashFlow</h1>
+  <div class="sub">Selecciona qué abrir</div>
+
+  <a class="row" href="./app.html">
+    <div>
+      <div class="t">Aplicación</div>
+      <div class="d">Punto de venta, turnos, arqueo, dashboard</div>
+    </div>
+    <div class="arr">→</div>
+  </a>
+
+  <a class="row" href="./mockups/rediseno.html">
+    <div>
+      <div class="t">Rediseño visual</div>
+      <div class="d">Mockup aprobado — referencia de diseño</div>
+    </div>
+    <div class="arr">→</div>
+  </a>
+
+  <div class="foot">Versión en desarrollo · mantenimiento por módulos</div>
+</div>
+</body>
+</html>

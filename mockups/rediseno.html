@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CashFlow Spa — Rediseño</title>
+<link rel="stylesheet" href="src/tokens.css"/>
+<style>
+  html,body{margin:0;padding:0;height:100%}
+  body{background:#f0eee9;font-family:'Geist',-apple-system,system-ui,sans-serif}
+  #root{height:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="src/primitives.jsx"></script>
+<script type="text/babel" src="src/sidebar.jsx"></script>
+<script type="text/babel" src="src/screen-turnos.jsx"></script>
+<script type="text/babel" src="src/screen-pv.jsx"></script>
+<script type="text/babel" src="src/screen-arqueo.jsx"></script>
+<script type="text/babel" src="src/screen-dash.jsx"></script>
+<script type="text/babel" src="src/screen-config.jsx"></script>
+<script type="text/babel" src="src/screen-recibo.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const W=1366, H=1024;
+
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="flow" title="CashFlow Spa · Rediseño" subtitle="iPad horizontal · Fraunces + Geist · paleta arena/terracota/musgo">
+        <DCArtboard id="turnos" label="01 · Lista de turnos (hub PV)" width={W} height={H}>
+          <TurnosList/>
+        </DCArtboard>
+        <DCArtboard id="pv" label="02 · Turno — punto de venta" width={W} height={H}>
+          <PVTurno/>
+        </DCArtboard>
+        <DCArtboard id="arqueo" label="03 · Arqueo a ciegas" width={W} height={H}>
+          <Arqueo/>
+        </DCArtboard>
+        <DCArtboard id="dash" label="04 · Dashboard histórico" width={W} height={H+320}>
+          <Dashboard/>
+        </DCArtboard>
+        <DCArtboard id="colab" label="05 · Configuración · colaboradoras" width={W} height={H}>
+          <ConfigColab/>
+        </DCArtboard>
+        <DCArtboard id="recibo" label="06 · Recibo firmable (export PDF)" width={W} height={1200}>
+          <Recibo/>
+        </DCArtboard>
+        <DCArtboard id="login" label="07 · Login" width={W} height={H}>
+          <Login/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

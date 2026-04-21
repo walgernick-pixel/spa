@@ -1,0 +1,68 @@
+/* CashFlow Spa — Design tokens v2
+   Warm, professional, spa-confident.
+*/
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+:root{
+  /* Neutral — warm sand */
+  --ink-0:#100e0a;       /* darkest text */
+  --ink-1:#201c16;       /* body */
+  --ink-2:#55504a;       /* secondary */
+  --ink-3:#8a857e;       /* tertiary / placeholders */
+  --ink-4:#b8b3ab;       /* faint */
+  --line-1:#e8e2d6;      /* borders */
+  --line-2:#f0ead e;
+  --paper:#faf7f1;       /* app bg — warm ivory */
+  --paper-raised:#ffffff;/* cards */
+  --paper-sunk:#f3ede1;  /* sunken */
+  --paper-stone:#ede6d6;
+
+  /* Brand */
+  --clay:#b04a2a;        /* terracotta primary */
+  --clay-700:#8a3820;
+  --clay-100:#f6e5dc;
+  --moss:#4f6b3a;        /* olive/moss — success, gráficas */
+  --moss-700:#3c5228;
+  --moss-100:#e3ecd2;
+  --sand:#c9a66b;        /* acento cálido */
+  --sand-100:#f5ecd8;
+  --ink-blue:#274862;    /* info */
+  --ink-blue-100:#dde7f0;
+  --rose:#9a3d4e;        /* danger/alerta en tono terracota */
+  --rose-100:#f4dee0;
+  --amber:#a86b15;       /* warn / propinas */
+  --amber-100:#f5e6c8;
+
+  /* Chart palette — harmonious, 6 pasos */
+  --c1:#b04a2a;
+  --c2:#c9a66b;
+  --c3:#4f6b3a;
+  --c4:#274862;
+  --c5:#8a5a8c;
+  --c6:#d7895a;
+
+  /* Radii */
+  --r-2:2px; --r-4:4px; --r-6:6px; --r-8:8px; --r-12:12px; --r-16:16px; --r-full:999px;
+
+  /* Shadows */
+  --shadow-1:0 1px 0 rgba(32,28,22,.04), 0 1px 2px rgba(32,28,22,.04);
+  --shadow-2:0 1px 0 rgba(32,28,22,.04), 0 4px 14px rgba(32,28,22,.06);
+  --shadow-pop:0 12px 48px rgba(32,28,22,.18), 0 1px 0 rgba(32,28,22,.06);
+
+  /* Type */
+  --serif:'Fraunces', 'Iowan Old Style', 'Charter', Georgia, serif;
+  --sans:'Geist', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --mono:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Spacing scale */
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:20px; --s-6:24px; --s-8:32px; --s-10:40px; --s-12:48px;
+}
+
+/* Fix typo above */
+:root{ --line-2:#f0ead6; }
+
+*{box-sizing:border-box}
+.cf{font-family:var(--sans);color:var(--ink-1);-webkit-font-smoothing:antialiased;font-feature-settings:'ss01','ss02','cv11'}
+.cf .num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum' on,'ss01' on}
+.cf .serif{font-family:var(--serif);font-feature-settings:'ss01','onum','liga'}
+.cf .mono{font-family:var(--mono)}
