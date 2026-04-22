@@ -178,6 +178,19 @@ const TurnosListFn = () => {
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
+      <style>{`
+        @media (max-width: 900px) {
+          .cf-turno-row {
+            grid-template-columns: 1fr auto !important;
+            gap: 8px 12px !important;
+            padding: 14px 16px !important;
+          }
+          .cf-turno-row .cf-hide-narrow { display: none !important; }
+          .cf-turno-row .cf-tr-fecha   { grid-column: 1 / 2; }
+          .cf-turno-row .cf-tr-vcn     { grid-column: 2 / 3; align-self: start; }
+          .cf-turno-row .cf-tr-estado  { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        }
+      `}</style>
       <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
         <div style={{padding:'28px 36px 0',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
           <div>
@@ -341,30 +354,31 @@ const TurnoRowFn = ({t, first, onClick}) => {
   return (
     <div
       onClick={onClick}
+      className="cf-turno-row"
       style={{display:'grid',gridTemplateColumns:'auto 1fr auto auto auto auto',alignItems:'center',gap:24,padding:'18px 22px',borderTop:first?'none':'1px solid var(--line-1)',background:rowBg,cursor:'pointer',transition:'background .15s'}}
       onMouseEnter={e=>{ if (t.estado!=='abierto') e.currentTarget.style.background='var(--paper-sunk)'; }}
       onMouseLeave={e=>{ if (t.estado!=='abierto') e.currentTarget.style.background='transparent'; }}
     >
       {/* Status dot + fecha */}
-      <div style={{display:'flex',alignItems:'center',gap:12,minWidth:160}}>
-        <div style={{width:8,height:8,borderRadius:999,background:s.dot,boxShadow:t.estado==='abierto'?'0 0 0 4px rgba(79,107,58,.18)':'none'}}/>
-        <div>
+      <div className="cf-tr-fecha" style={{display:'flex',alignItems:'center',gap:12,minWidth:0}}>
+        <div style={{width:8,height:8,borderRadius:999,background:s.dot,boxShadow:t.estado==='abierto'?'0 0 0 4px rgba(79,107,58,.18)':'none',flexShrink:0}}/>
+        <div style={{minWidth:0}}>
           <div style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
             {fechaTxt}
             {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
             {Number(t.reaperturas)>0 && <span title={t.reabierto_at?`Última reapertura: ${new Date(t.reabierto_at).toLocaleDateString('es-MX')}`:'Reabierto'} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.08)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.25)'}}>Reabierto {t.reaperturas}×</span>}
           </div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}{t.encargada_nombre?` · ${t.encargada_nombre.split(' ')[0]}`:''} · {t.n_servicios||0} svc</div>
         </div>
       </div>
 
       {/* Timeline bar */}
-      <div style={{position:'relative',height:6,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden'}}>
+      <div className="cf-hide-narrow" style={{position:'relative',height:6,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden'}}>
         <TimelineBarFn inicio={t.hora_inicio} fin={t.hora_fin} abierto={t.estado==='abierto'}/>
       </div>
 
-      {/* Encargada */}
-      <div style={{display:'flex',alignItems:'center',gap:7,minWidth:110}}>
+      {/* Encargada (solo desktop) */}
+      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:110}}>
         {t.encargada_nombre ? (
           <>
             <Av name={t.encargada_nombre} tone={(t.encargada_nombre||'').charAt(0).toUpperCase()>='L'?'moss':'clay'} size={22}/>
@@ -375,8 +389,8 @@ const TurnoRowFn = ({t, first, onClick}) => {
         )}
       </div>
 
-      {/* Servicios */}
-      <div className="num" style={{fontSize:13,color:'var(--ink-2)',minWidth:70,textAlign:'right'}}>
+      {/* Servicios (solo desktop) */}
+      <div className="num cf-hide-narrow" style={{fontSize:13,color:'var(--ink-2)',minWidth:70,textAlign:'right'}}>
         <span style={{fontWeight:600,color:'var(--ink-0)'}}>{t.n_servicios||0}</span> svc
       </div>
 
@@ -387,7 +401,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
         const n = v - c;
         const fmt = (x) => '$' + Math.round(x).toLocaleString('es-MX');
         return (
-          <div style={{minWidth:140,textAlign:'right',fontSize:11.5,lineHeight:1.45}} className="num">
+          <div className="cf-tr-vcn num" style={{minWidth:0,textAlign:'right',fontSize:11.5,lineHeight:1.45}}>
             <div style={{color:'var(--ink-1)',fontWeight:600}}>V = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(v)}</span></div>
             <div style={{color:'var(--clay)'}}>C = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(c)}</span></div>
             <div style={{color:'var(--moss)',fontWeight:700}}>N = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(n)}</span></div>
@@ -396,7 +410,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
       })()}
 
       {/* Estado + pendientes + arqueo */}
-      <div style={{minWidth:118,textAlign:'right'}}>
+      <div className="cf-tr-estado" style={{minWidth:0,textAlign:'right'}}>
         <Chip tone={s.tone}>{s.label}</Chip>
         {Number(t.n_pagos_pendientes)>0 && (
           <div style={{fontSize:10,color:'var(--amber)',fontWeight:600,marginTop:4}}>
