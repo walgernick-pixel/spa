@@ -152,6 +152,17 @@ const ArqueoFn = () => {
     cargar(); // re-cargar para reflejar estado
   };
 
+  // Reabrir turno cerrado (solo admin — por ahora confirma con texto)
+  const reabrirTurno = async () => {
+    const pass = window.prompt('⚠️ REABRIR turno cerrado\n\nEsto permitirá agregar, editar o borrar servicios y modificar el arqueo.\nSolo administradores deberían hacer esto.\n\nEscribe REABRIR (mayúsculas) para confirmar:');
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
+    const {error} = await sb.from('turnos').update({estado:'abierto', hora_fin:null, cerrado:null}).eq('id', turnoId);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Turno reabierto');
+    cargar();
+  };
+
   // Cerrar turno DEFINITIVAMENTE (acción separada)
   const cerrarTurno = async () => {
     const pendientes = turnoColabs.filter(tc => !tc.comision_pagada_at).length;
@@ -365,9 +376,10 @@ const ArqueoFn = () => {
           {turno.estado === 'cerrado' && (
             <div style={{marginTop:16,padding:'14px 18px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',alignItems:'center',gap:12}}>
               <Icon name="lock" size={14} color="var(--ink-3)"/>
-              <div style={{fontSize:12.5,color:'var(--ink-2)'}}>
+              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>
                 Turno cerrado{turno.cerrado ? ` el ${new Date(turno.cerrado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}` : ''}. No se pueden hacer más cambios.
               </div>
+              <Btn variant="ghost" size="sm" onClick={reabrirTurno}>Reabrir turno</Btn>
             </div>
           )}
         </div>
