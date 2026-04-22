@@ -165,9 +165,24 @@ const ArqueoFn = () => {
 
   // Cerrar turno DEFINITIVAMENTE (acción separada)
   const cerrarTurno = async () => {
-    const pendientes = turnoColabs.filter(tc => !tc.comision_pagada_at).length;
-    let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nYa no se podrán agregar ni editar servicios.';
-    if (pendientes > 0) msg += `\n\nHay ${pendientes} ${pendientes===1?'colaboradora':'colaboradoras'} con comisión pendiente. Quedan como pendientes y podrás marcarlas como pagadas después.`;
+    // 1) Calcular colabs que intervinieron en el turno (ejecutor o vendedora)
+    const idsEnTurno = new Set();
+    ventas.forEach(v => {
+      idsEnTurno.add(v.colaboradora_id);
+      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) idsEnTurno.add(v.vendedora_id);
+    });
+    // 2) Contar cuántas siguen sin comision_pagada_at
+    const pendientes = [...idsEnTurno].filter(id => !colabPagada[id]);
+    if (pendientes.length > 0) {
+      return notify(
+        `No puedes cerrar el turno: ${pendientes.length} ${pendientes.length===1?'colaboradora':'colaboradoras'} con pago pendiente. Márcalas como pagadas primero (la firma puede quedar pendiente).`,
+        'err'
+      );
+    }
+    // 3) Avisar si hay firmas pendientes pero permitir cerrar
+    const sinFirma = turnoColabs.filter(tc => tc.comision_pagada_at && !tc.firma_data_url);
+    let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nYa no se podrán agregar, editar ni borrar servicios. El arqueo queda bloqueado.';
+    if (sinFirma.length > 0) msg += `\n\n⚠️ Hay ${sinFirma.length} ${sinFirma.length===1?'colaboradora':'colaboradoras'} pagada${sinFirma.length===1?'':'s'} sin firmar. Podrán firmar después (solo admin podrá reabrir).`;
     if (!confirmar(msg)) return;
     setCerrando(true);
     const ahora = new Date();
@@ -307,8 +322,8 @@ const ArqueoFn = () => {
                             <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.3,color:'var(--ink-2)',marginBottom:5}}>Neto en gaveta (reportado)</label>
                             <div style={{position:'relative'}}>
                               <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontSize:20,fontFamily:'var(--serif)',color:'var(--ink-3)',fontWeight:500}}>{sym}</span>
-                              <input type="number" step="0.01" min="0" value={repStr||''} onChange={e=>actualizarReportado(b.moneda, e.target.value)} placeholder="0.00" className="num"
-                                style={{width:'100%',padding:'14px 14px 14px 36px',fontSize:22,fontWeight:600,fontFamily:'var(--serif)',letterSpacing:-.3,border:`1.5px solid ${color}55`,borderRadius:10,background:'var(--paper-raised)',color:'var(--ink-0)',textAlign:'right',boxSizing:'border-box'}}
+                              <input type="number" step="0.01" min="0" value={repStr||''} onChange={e=>actualizarReportado(b.moneda, e.target.value)} placeholder={turno.estado==='cerrado'?'—':'0.00'} disabled={turno.estado==='cerrado'} className="num"
+                                style={{width:'100%',padding:'14px 14px 14px 36px',fontSize:22,fontWeight:600,fontFamily:'var(--serif)',letterSpacing:-.3,border:`1.5px solid ${color}55`,borderRadius:10,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper-raised)',color:'var(--ink-0)',textAlign:'right',boxSizing:'border-box',cursor:turno.estado==='cerrado'?'not-allowed':'text'}}
                               />
                             </div>
                           </div>
@@ -336,7 +351,7 @@ const ArqueoFn = () => {
               {/* Notas */}
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'16px 20px',marginBottom:18}}>
                 <label style={{display:'block',fontSize:11,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:8}}>Notas del arqueo (opcional)</label>
-                <textarea value={notas} onChange={e=>setNotas(e.target.value)} rows={2} placeholder="Observaciones sobre faltantes/sobrantes, incidentes del turno, etc." style={{width:'100%',padding:'10px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box',resize:'vertical',minHeight:60}}/>
+                <textarea value={notas} onChange={e=>setNotas(e.target.value)} rows={2} placeholder={turno.estado==='cerrado' && !notas ? 'Sin notas' : 'Observaciones sobre faltantes/sobrantes, incidentes del turno, etc.'} disabled={turno.estado==='cerrado'} style={{width:'100%',padding:'10px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box',resize:'vertical',minHeight:60,cursor:turno.estado==='cerrado'?'not-allowed':'text'}}/>
               </div>
 
               {/* Resumen global + acciones */}
@@ -352,9 +367,11 @@ const ArqueoFn = () => {
                   </div>
                 )}
                 <Btn variant="secondary" size="md" onClick={()=>navigate('turnos/pv/'+turnoId)} disabled={saving}>← Volver al PV</Btn>
-                <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || !hayReportados}>
-                  {saving ? 'Guardando…' : (hayArqueoExistente ? 'Actualizar arqueo' : 'Guardar arqueo')}
-                </Btn>
+                {turno.estado === 'abierto' && (
+                  <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || !hayReportados}>
+                    {saving ? 'Guardando…' : (hayArqueoExistente ? 'Actualizar arqueo' : 'Guardar arqueo')}
+                  </Btn>
+                )}
               </div>
             </>
           )}

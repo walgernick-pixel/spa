@@ -89,6 +89,33 @@ const TurnosListFn = () => {
       .order('hora_inicio', { ascending: false })
       .limit(30);
     if (error) { notify('Error cargando turnos: '+error.message, 'err'); setLoading(false); return; }
+    // Cargar arqueos + monedas para computar diferencia total por turno
+    const turnoIds = (data||[]).map(t => t.id);
+    if (turnoIds.length > 0) {
+      const [arqs, mons] = await Promise.all([
+        sb.from('arqueos').select('turno_id, moneda, neto_esperado, neto_reportado, diferencia').in('turno_id', turnoIds),
+        sb.from('monedas').select('codigo, tc_a_mxn'),
+      ]);
+      const tcByMoneda = {};
+      (mons.data||[]).forEach(m => tcByMoneda[m.codigo] = Number(m.tc_a_mxn) || 1);
+      const arqsByTurno = {};
+      (arqs.data||[]).forEach(a => {
+        if (!arqsByTurno[a.turno_id]) arqsByTurno[a.turno_id] = [];
+        arqsByTurno[a.turno_id].push(a);
+      });
+      data.forEach(t => {
+        const arqueos = arqsByTurno[t.id] || [];
+        const reportados = arqueos.filter(a => a.neto_reportado !== null);
+        if (reportados.length === 0) {
+          t.arqueoStatus = arqueos.length > 0 ? 'parcial' : 'pendiente'; // registrados pero sin reportar
+          t.arqueoDifMxn = 0;
+        } else {
+          const dif = reportados.reduce((s,a) => s + (Number(a.diferencia)||0) * (tcByMoneda[a.moneda]||1), 0);
+          t.arqueoDifMxn = dif;
+          t.arqueoStatus = Math.abs(dif) < 0.5 ? 'cuadra' : (dif > 0 ? 'sobra' : 'falta');
+        }
+      });
+    }
     setTurnos(data || []);
     setLoading(false);
   }, []);
@@ -357,17 +384,39 @@ const TurnoRowFn = ({t, first, onClick}) => {
         <Money amount={Number(t.total_mxn||0)} size={18} weight={600}/>
       </div>
 
-      {/* Estado + pendientes */}
-      <div style={{minWidth:92,textAlign:'right'}}>
+      {/* Estado + pendientes + arqueo */}
+      <div style={{minWidth:118,textAlign:'right'}}>
         <Chip tone={s.tone}>{s.label}</Chip>
         {Number(t.n_pagos_pendientes)>0 && (
           <div style={{fontSize:10,color:'var(--amber)',fontWeight:600,marginTop:4}}>
             {t.n_pagos_pendientes} pago{t.n_pagos_pendientes>1?'s':''} pendiente{t.n_pagos_pendientes>1?'s':''}
           </div>
         )}
+        {/* Estado arqueo */}
+        {t.arqueoStatus && t.arqueoStatus !== 'pendiente' && (
+          <ArqueoChip status={t.arqueoStatus} difMxn={t.arqueoDifMxn || 0}/>
+        )}
       </div>
     </div>
   );
+};
+
+// ─── Chip de estado de arqueo ───
+const ArqueoChip = ({status, difMxn}) => {
+  const fmt = (n) => '$' + Math.abs(Math.round(n)).toLocaleString('es-MX');
+  if (status === 'cuadra') {
+    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.12)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.3)'}}>✓ Cuadró</div>;
+  }
+  if (status === 'sobra') {
+    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.08)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.25)'}} title="Sobrante">↑ Sobró {fmt(difMxn)}</div>;
+  }
+  if (status === 'falta') {
+    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'#b73f5e',background:'rgba(212,83,126,.1)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(212,83,126,.3)'}} title="Faltante">↓ Faltó {fmt(difMxn)}</div>;
+  }
+  if (status === 'parcial') {
+    return <div style={{marginTop:4,fontSize:10,color:'var(--ink-3)',fontStyle:'italic'}}>arqueo parcial</div>;
+  }
+  return null;
 };
 
 // ─── Timeline bar ───
