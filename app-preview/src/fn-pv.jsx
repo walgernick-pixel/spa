@@ -78,6 +78,17 @@ const PVTurnoFn = () => {
     navigate('turnos/arqueo/' + turnoId);
   };
 
+  // Reabrir turno cerrado (solo admin — por ahora confirma con texto)
+  const reabrirTurno = async () => {
+    const pass = window.prompt('⚠️ REABRIR turno cerrado\n\nEsto permitirá agregar, editar o borrar servicios del turno nuevamente.\nSolo administradores deberían hacer esto.\n\nEscribe REABRIR (mayúsculas) para confirmar:');
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
+    const {error} = await sb.from('turnos').update({estado:'abierto', hora_fin:null, cerrado:null}).eq('id', turnoId);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Turno reabierto');
+    cargar();
+  };
+
   // Agrupar ventas por colaboradora (como ejecutor O como vendedora)
   const ventasPorColab = React.useMemo(()=>{
     const map = {};
@@ -224,11 +235,15 @@ const PVTurnoFn = () => {
 
         {turno.estado === 'cerrado' && (
           <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
-            <div>
-              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Turno cerrado</div>
-              <div style={{fontSize:12,color:'var(--ink-2)'}}>Puedes consultar el arqueo o generar el recibo.</div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <Icon name="lock" size={14} color="var(--ink-3)"/>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Turno cerrado · modo consulta</div>
+                <div style={{fontSize:12,color:'var(--ink-2)'}}>Solo visualización. Para modificar algún dato, reábrelo (requiere admin).</div>
+              </div>
             </div>
             <div style={{display:'flex',gap:8}}>
+              <Btn variant="ghost" size="md" icon="lock" onClick={reabrirTurno}>Reabrir turno</Btn>
               <Btn variant="secondary" onClick={()=>navigate('turnos/arqueo/'+turnoId)}>Ver arqueo</Btn>
             </div>
           </div>

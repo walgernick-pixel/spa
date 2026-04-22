@@ -128,8 +128,9 @@ const TurnosListFn = () => {
   };
 
   const abrirTurnoFila = (t) => {
-    if (t.estado === 'abierto') navigate('turnos/pv/' + t.id);
-    else navigate('turnos/recibo/' + t.id);
+    // Abierto o cerrado, ambos van al PV. Si está cerrado, el PV se muestra
+    // en modo solo-lectura (sin botones de editar/borrar/agregar).
+    navigate('turnos/pv/' + t.id);
   };
 
   // Capturar turno retroactivo (fecha en el pasado)
