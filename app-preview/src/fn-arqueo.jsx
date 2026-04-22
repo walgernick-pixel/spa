@@ -266,9 +266,9 @@ const ArqueoFn = () => {
   const hayArqueoExistente = arqueos.length > 0 && arqueos.some(a => a.neto_reportado !== null);
 
   return (
-    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>
-      {/* Header */}
-      <div style={{padding:'16px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'center',gap:16}}>
+    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+      {/* Header sticky */}
+      <div style={{position:'sticky',top:0,zIndex:5,padding:'14px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
         <button onClick={()=>navigate('turnos/pv/'+turnoId)} style={{background:'transparent',border:'none',display:'flex',alignItems:'center',gap:5,color:'var(--ink-2)',fontSize:13,cursor:'pointer',fontWeight:500,fontFamily:'inherit'}}>
           <Icon name="arrow-left" size={15}/> PV del turno
         </button>
@@ -286,7 +286,7 @@ const ArqueoFn = () => {
         </div>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',minHeight:0}}>
+      <div>
         <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 100px'}}>
           {/* Info banner */}
           <div style={{padding:'14px 18px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10,display:'flex',gap:12,alignItems:'flex-start',fontSize:12.5,color:'#7a4e10',lineHeight:1.55,marginBottom:20}}>
