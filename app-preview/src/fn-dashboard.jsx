@@ -316,6 +316,130 @@ const DashboardFn = () => {
     };
   }, [data]);
 
+  // Drill-down modal state
+  const [drillDown, setDrillDown] = React.useState(null);
+
+  const abrirDrill = (tipo, filtro, titulo) => {
+    if (!data) return;
+    let items = [];
+    let columnas = [];
+    if (tipo === 'colab') {
+      items = data.ventas.filter(v => v.colaboradora_id === filtro || v.vendedora_id === filtro);
+      columnas = 'ventas';
+    } else if (tipo === 'servicio') {
+      items = data.ventas.filter(v => v.servicio === filtro);
+      columnas = 'ventas';
+    } else if (tipo === 'canal') {
+      items = data.ventas.filter(v => v.canal === filtro);
+      columnas = 'ventas';
+    } else if (tipo === 'categoria') {
+      items = data.gastos.filter(g => g.categoria === filtro);
+      columnas = 'gastos';
+    } else if (tipo === 'proveedor') {
+      items = data.gastos.filter(g => (g.proveedor || '(Sin proveedor)') === filtro);
+      columnas = 'gastos';
+    } else if (tipo === 'cuenta-ingresos') {
+      items = data.ventas.filter(v => v.cuenta_id === filtro);
+      columnas = 'ventas';
+    } else if (tipo === 'cuenta-gastos') {
+      items = data.gastos.filter(g => g.cuenta_id === filtro);
+      columnas = 'gastos';
+    }
+    setDrillDown({tipo, filtro, titulo, items, columnas});
+  };
+
+  // Exportar a Excel (xlsx con varias hojas)
+  const exportarExcel = () => {
+    if (!window.XLSX || !derivado) return notify('XLSX no disponible','err');
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    const periodo = `${rango.desde}_${rango.hasta}`;
+
+    // Hoja 1: Resumen
+    const resumen = [
+      ['REPORTE CASHFLOW SPA'],
+      [`Periodo: ${rango.label}`, `Del ${rango.desde} al ${rango.hasta}`],
+      [`Generado: ${new Date().toLocaleString('es-MX')}`],
+      [],
+      ['MÉTRICA', 'VALOR (MXN)'],
+      ['Ventas totales', derivado.totalVentas],
+      ['Comisiones (terapeutas + venta)', derivado.totalComis],
+      ['Propinas', derivado.totalPropinas],
+      ['Gastos', derivado.totalGastos],
+      ['Neto al spa', derivado.netoSpa],
+      ['Ticket promedio', Math.round(derivado.tickProm)],
+      ['Número de turnos', derivado.nTurnos],
+      ['Número de servicios', derivado.nServicios],
+      ['Diferencia arqueos', derivado.difArqueos],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
+
+    // Hoja 2: Ventas detalle
+    const ventasAoA = [['Fecha','Servicio','Colaboradora','Canal','Cuenta','Precio','Moneda','% Com','Comisión','Propina','Vendedora','% Venta','Com. Venta','Monto MXN eq']];
+    data.ventas.forEach(v => {
+      ventasAoA.push([
+        v.fecha, v.servicio, v.colaboradora_nombre || '', v.canal || '', v.cuenta || '',
+        Number(v.precio || 0), v.moneda, Number(v.comision_pct || 0), Number(v.comision_monto || 0),
+        Number(v.propina || 0), v.vendedora_nombre || '',
+        Number(v.comision_venta_pct || 0), Number(v.comision_venta_monto || 0),
+        Number(v.precio_mxn || 0),
+      ]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ventasAoA), 'Ventas');
+
+    // Hoja 3: Gastos detalle
+    const gastosAoA = [['Fecha','Concepto','Categoría','Proveedor','Cuenta','Monto','Moneda','Monto MXN','Notas']];
+    data.gastos.forEach(g => {
+      gastosAoA.push([
+        g.fecha, g.concepto || '', g.categoria || '', g.proveedor || '', g.cuenta || '',
+        Number(g.monto || 0), g.moneda, Number(g.monto_mxn || 0), g.notas || '',
+      ]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gastosAoA), 'Gastos');
+
+    // Hoja 4: Flujo de caja por cuenta
+    const flujoAoA = [['Cuenta','Tipo','Moneda','Ingresos','Comisiones','Gastos','Balance','Ventas #','Gastos #']];
+    derivado.flujoPorCuenta.forEach(c => {
+      flujoAoA.push([c.label, c.tipo, c.moneda, c.ingresos, c.comisiones, c.gastos, c.balance, c.n_ventas, c.n_gastos]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(flujoAoA), 'Flujo de caja');
+
+    // Hoja 5: Top colaboradoras
+    const colabsAoA = [['Colaboradora','Alias','# Servicios','Ventas MXN','Comisión MXN','Propinas MXN','Ventas a otras']];
+    derivado.colabsOrd.forEach(c => {
+      colabsAoA.push([c.nombre, c.alias || '', c.n, Math.round(c.ventas), Math.round(c.comision), Math.round(c.propina), c.ventasHechas || 0]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(colabsAoA), 'Colaboradoras');
+
+    // Hoja 6: Top servicios
+    const svcAoA = [['Servicio','Veces','Ticket promedio','Total MXN']];
+    derivado.serviciosOrd.forEach(s => {
+      svcAoA.push([s.label, s.n, Math.round(s.ticketProm), Math.round(s.total)]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(svcAoA), 'Servicios');
+
+    // Hoja 7: Arqueos
+    const arqAoA = [['Turno ID','Cuenta ID','Moneda','Venta efectivo','Comisiones pagadas','Neto esperado','Neto reportado','Diferencia','Notas']];
+    data.arqueos.forEach(a => {
+      arqAoA.push([
+        a.turno_id, a.cuenta_id || '', a.moneda,
+        Number(a.venta_efectivo || 0), Number(a.comisiones_pagadas || 0),
+        Number(a.neto_esperado || 0), a.neto_reportado === null ? '' : Number(a.neto_reportado),
+        a.diferencia === null ? '' : Number(a.diferencia),
+        a.notas || '',
+      ]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(arqAoA), 'Arqueos');
+
+    XLSX.writeFile(wb, `dashboard_${periodo}.xlsx`);
+    notify('Excel descargado ✓');
+  };
+
+  // Exportar a PDF (usa window.print con CSS print)
+  const exportarPDF = () => {
+    setTimeout(() => window.print(), 50);
+  };
+
   // Deltas vs periodo anterior
   const deltas = React.useMemo(() => {
     if (!derivado || !dataPrev) return null;
@@ -342,9 +466,21 @@ const DashboardFn = () => {
   }
 
   return (
-    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+    <div className="dashboard-root" style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+      <style>{`
+        @media print {
+          @page { size: letter; margin: 0.7cm; }
+          body * { visibility: hidden; }
+          .dashboard-root, .dashboard-root * { visibility: visible; }
+          .dashboard-root { position: absolute !important; left: 0; top: 0; width: 100%; overflow: visible !important; }
+          .dashboard-no-print { display: none !important; }
+          .dashboard-root canvas { max-width: 100%; height: auto !important; }
+          /* Evitar cortes feos en medio de secciones */
+          .dashboard-section { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
       {/* Header */}
-      <div style={{position:'sticky',top:0,zIndex:5,padding:'18px 24px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'flex-end',gap:16,flexWrap:'wrap'}}>
+      <div className="dashboard-no-print" style={{position:'sticky',top:0,zIndex:5,padding:'18px 24px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'flex-end',gap:16,flexWrap:'wrap'}}>
         <div>
           <div style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.6,color:'var(--ink-0)',lineHeight:1}}>Dashboard</div>
           <div style={{fontSize:12,color:'var(--ink-3)',marginTop:4}}>{rango.label} · {rango.desde} → {rango.hasta}</div>
@@ -367,6 +503,13 @@ const DashboardFn = () => {
             <span style={{color:'var(--ink-3)'}}>→</span>
             <input type="date" value={customHasta} onChange={e=>setCH(e.target.value)} style={{padding:'9px 12px',border:'1px solid var(--line-1)',borderRadius:8,fontSize:13,fontFamily:'inherit'}}/>
           </>
+        )}
+        {/* Botones de exportar */}
+        {!loading && derivado && (
+          <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+            <Btn variant="ghost" size="md" icon="download" onClick={exportarExcel}>Excel</Btn>
+            <Btn variant="secondary" size="md" icon="receipt" onClick={exportarPDF}>PDF</Btn>
+          </div>
         )}
       </div>
 
@@ -410,13 +553,13 @@ const DashboardFn = () => {
                   <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>Ingresos − comisiones efectivo − gastos = balance</div>
                 </div>
               </div>
-              <FlujoCuentaTable cuentas={derivado.flujoPorCuenta} monedas={data.monedas}/>
+              <FlujoCuentaTable cuentas={derivado.flujoPorCuenta} monedas={data.monedas} onDrill={(cuenta, tipo) => abrirDrill(tipo==='ingresos'?'cuenta-ingresos':'cuenta-gastos', cuenta.id, `${tipo==='ingresos'?'Ingresos':'Gastos'} de ${cuenta.label}`)}/>
             </div>
 
             {/* Breakdowns lado a lado */}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))',gap:16,marginBottom:20}}>
-              <BreakdownCard titulo="Ventas por canal" items={derivado.canalesOrd} total={derivado.totalVentas} variant="canal"/>
-              <BreakdownCard titulo="Gastos por categoría" items={derivado.categoriasOrd} total={derivado.totalGastos} variant="cat"/>
+              <BreakdownCard titulo="Ventas por canal" items={derivado.canalesOrd} total={derivado.totalVentas} variant="canal" onItemClick={(it)=>abrirDrill('canal', it.label, `Ventas del canal "${it.label}"`)}/>
+              <BreakdownCard titulo="Gastos por categoría" items={derivado.categoriasOrd} total={derivado.totalGastos} variant="cat" onItemClick={(it)=>abrirDrill('categoria', it.label, `Gastos de categoría "${it.label}"`)}/>
             </div>
 
             {/* Top colaboradoras + Top servicios */}
@@ -427,7 +570,7 @@ const DashboardFn = () => {
                 {derivado.colabsOrd.length === 0 ? (
                   <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin colaboradoras con ventas</div>
                 ) : (
-                  <TopColabsTable colabs={derivado.colabsOrd.slice(0,10)}/>
+                  <TopColabsTable colabs={derivado.colabsOrd.slice(0,10)} onColabClick={(c)=>abrirDrill('colab', c.id, `Ventas de ${c.nombre}`)}/>
                 )}
               </div>
               {/* Top servicios */}
@@ -436,7 +579,7 @@ const DashboardFn = () => {
                 {derivado.serviciosOrd.length === 0 ? (
                   <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin servicios vendidos</div>
                 ) : (
-                  <TopServiciosTable servicios={derivado.serviciosOrd.slice(0,10)}/>
+                  <TopServiciosTable servicios={derivado.serviciosOrd.slice(0,10)} onServicioClick={(s)=>abrirDrill('servicio', s.label, `Ventas de "${s.label}"`)}/>
                 )}
               </div>
             </div>
@@ -447,7 +590,7 @@ const DashboardFn = () => {
               {derivado.proveedoresOrd.length === 0 ? (
                 <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin gastos en este periodo</div>
               ) : (
-                <BreakdownCard titulo={null} items={derivado.proveedoresOrd.slice(0,8)} total={derivado.totalGastos} variant="cat" flush/>
+                <BreakdownCard titulo={null} items={derivado.proveedoresOrd.slice(0,8)} total={derivado.totalGastos} variant="cat" flush onItemClick={(it)=>abrirDrill('proveedor', it.label, `Gastos de proveedor "${it.label}"`)}/>
               )}
             </div>
 
@@ -468,20 +611,27 @@ const DashboardFn = () => {
           </>
         )}
       </div>
+
+      {/* Drill-down modal */}
+      {drillDown && <DrillDownModal data={drillDown} monedas={data?.monedas || {}} onClose={()=>setDrillDown(null)}/>}
     </div>
   );
 };
 
 // ─── Tabla top colaboradoras ───
-const TopColabsTable = ({colabs}) => {
+const TopColabsTable = ({colabs, onColabClick}) => {
   const max = Math.max(...colabs.map(c => c.ventas + c.comision));
   return (
     <div style={{display:'flex',flexDirection:'column',gap:8}}>
       {colabs.map((c,i) => {
         const recibido = c.comision + c.propina;
         const pct = max > 0 ? ((c.ventas + c.comision) / max) * 100 : 0;
+        const clickable = typeof onColabClick === 'function';
         return (
-          <div key={c.id}>
+          <div key={c.id} onClick={clickable ? () => onColabClick(c) : undefined} style={{cursor: clickable?'pointer':'default',padding: clickable?'4px 6px':0,margin:clickable?'-4px -6px':0,borderRadius:4,transition:'background .12s'}}
+            onMouseEnter={clickable ? (e)=>e.currentTarget.style.background='var(--paper-sunk)' : undefined}
+            onMouseLeave={clickable ? (e)=>e.currentTarget.style.background='transparent' : undefined}
+          >
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:3,fontSize:11.5,gap:8}}>
               <span style={{color:'var(--ink-1)',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                 <span style={{color:'var(--ink-3)',fontWeight:700,marginRight:6}}>{i+1}.</span>
@@ -507,7 +657,8 @@ const TopColabsTable = ({colabs}) => {
 };
 
 // ─── Tabla top servicios ───
-const TopServiciosTable = ({servicios}) => {
+const TopServiciosTable = ({servicios, onServicioClick}) => {
+  const clickable = typeof onServicioClick === 'function';
   return (
     <div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 70px 90px 110px',gap:10,padding:'6px 8px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
@@ -517,11 +668,95 @@ const TopServiciosTable = ({servicios}) => {
         <div className="num" style={{textAlign:'right'}}>Total</div>
       </div>
       {servicios.map(s => (
-        <div key={s.label} style={{display:'grid',gridTemplateColumns:'1fr 70px 90px 110px',gap:10,padding:'8px 8px',fontSize:12,alignItems:'center',borderBottom:'1px solid var(--line-2)'}}>
+        <div key={s.label} onClick={clickable ? () => onServicioClick(s) : undefined} style={{display:'grid',gridTemplateColumns:'1fr 70px 90px 110px',gap:10,padding:'8px 8px',fontSize:12,alignItems:'center',borderBottom:'1px solid var(--line-2)',cursor:clickable?'pointer':'default',transition:'background .12s'}}
+          onMouseEnter={clickable ? (e)=>e.currentTarget.style.background='var(--paper-sunk)' : undefined}
+          onMouseLeave={clickable ? (e)=>e.currentTarget.style.background='transparent' : undefined}
+        >
           <div style={{color:'var(--ink-0)',fontWeight:500}}>{s.label}</div>
           <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>{s.n}</div>
           <div className="num" style={{textAlign:'right',color:'var(--ink-2)'}}>${Math.round(s.ticketProm).toLocaleString('es-MX')}</div>
           <div className="num" style={{textAlign:'right',fontWeight:700,color:'var(--ink-0)',fontFamily:'var(--serif)',fontSize:13}}>${Math.round(s.total).toLocaleString('es-MX')}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── Drill-down modal: muestra detalle filtrado ───
+const DrillDownModal = ({data, monedas, onClose}) => {
+  if (!data) return null;
+  const {titulo, items, columnas} = data;
+  const fmt = (n) => '$' + Math.round(Number(n)||0).toLocaleString('es-MX');
+  const esVentas = columnas === 'ventas';
+
+  // Totales
+  const totalMxn = items.reduce((a,x) => a + Number(esVentas ? x.precio_mxn : x.monto_mxn)||0, 0);
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.4)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+      <div style={{background:'var(--paper)',borderRadius:14,width:'100%',maxWidth:980,maxHeight:'85vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div style={{padding:'16px 20px',borderBottom:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.3}}>{titulo}</div>
+            <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:2}}>{items.length} {items.length===1?'registro':'registros'} · Total: <strong>{fmt(totalMxn)}</strong> MXN</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',cursor:'pointer',width:32,height:32,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-2)'}}>
+            <Icon name="x" size={16}/>
+          </button>
+        </div>
+        {/* Body: tabla */}
+        <div style={{flex:1,overflowY:'auto',padding:12}}>
+          {items.length === 0 ? (
+            <div style={{padding:40,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Sin registros que mostrar</div>
+          ) : esVentas ? (
+            <DrillVentasTable items={items} monedas={monedas}/>
+          ) : (
+            <DrillGastosTable items={items} monedas={monedas}/>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DrillVentasTable = ({items, monedas}) => {
+  const symOf = (m) => monedas[m]?.simbolo || '$';
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:2}}>
+      <div style={{display:'grid',gridTemplateColumns:'80px 1fr 130px 110px 100px 90px 100px',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)',background:'var(--paper-sunk)'}}>
+        <div>Fecha</div><div>Servicio</div><div>Colaboradora</div><div>Canal</div><div>Cuenta</div><div className="num" style={{textAlign:'right'}}>Precio</div><div className="num" style={{textAlign:'right'}}>Comisión</div>
+      </div>
+      {items.map(v => (
+        <div key={v.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 130px 110px 100px 90px 100px',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderBottom:'1px solid var(--line-2)'}}>
+          <div className="num" style={{fontSize:11,color:'var(--ink-3)'}}>{v.fecha}</div>
+          <div style={{color:'var(--ink-0)',fontWeight:600}}>{v.servicio}</div>
+          <div style={{color:'var(--ink-1)'}}>{v.colaboradora_nombre}</div>
+          <div style={{color:'var(--ink-2)'}}>{v.canal}</div>
+          <div style={{color:'var(--ink-3)',fontSize:11}}>{v.cuenta} {v.moneda!=='MXN'?`(${v.moneda})`:''}</div>
+          <div className="num" style={{textAlign:'right',color:'var(--ink-0)',fontWeight:600}}>{symOf(v.moneda)}{Number(v.precio).toLocaleString('es-MX')}</div>
+          <div className="num" style={{textAlign:'right',color:'var(--clay)'}}>{symOf(v.moneda)}{Math.round(Number(v.comision_monto||0)+Number(v.comision_venta_monto||0)).toLocaleString('es-MX')}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const DrillGastosTable = ({items, monedas}) => {
+  const symOf = (m) => monedas[m]?.simbolo || '$';
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:2}}>
+      <div style={{display:'grid',gridTemplateColumns:'80px 1fr 140px 120px 110px 100px',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)',background:'var(--paper-sunk)'}}>
+        <div>Fecha</div><div>Concepto</div><div>Categoría</div><div>Proveedor</div><div>Cuenta</div><div className="num" style={{textAlign:'right'}}>Monto</div>
+      </div>
+      {items.map(g => (
+        <div key={g.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 140px 120px 110px 100px',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderBottom:'1px solid var(--line-2)'}}>
+          <div className="num" style={{fontSize:11,color:'var(--ink-3)'}}>{g.fecha}</div>
+          <div style={{color:'var(--ink-0)',fontWeight:600}}>{g.concepto}</div>
+          <div style={{color:'var(--ink-2)'}}>{g.categoria}</div>
+          <div style={{color:'var(--ink-2)'}}>{g.proveedor || '—'}</div>
+          <div style={{color:'var(--ink-3)',fontSize:11}}>{g.cuenta} {g.moneda!=='MXN'?`(${g.moneda})`:''}</div>
+          <div className="num" style={{textAlign:'right',color:'#b73f5e',fontWeight:600}}>{symOf(g.moneda)}{Number(g.monto).toLocaleString('es-MX')}</div>
         </div>
       ))}
     </div>
@@ -603,7 +838,7 @@ const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted}) 
 };
 
 // ─── Tabla flujo de caja por cuenta ───
-const FlujoCuentaTable = ({cuentas, monedas}) => {
+const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
   if (cuentas.length === 0) return <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin movimientos en este periodo</div>;
   const symOf = (m) => monedas[m]?.simbolo || '$';
   return (
@@ -614,6 +849,8 @@ const FlujoCuentaTable = ({cuentas, monedas}) => {
       {cuentas.map(c => {
         const sym = symOf(c.moneda);
         const fmt = (n) => sym + Math.round(Math.abs(n)).toLocaleString('es-MX');
+        const clickable = typeof onDrill === 'function';
+        const cellClickStyle = (hasData) => clickable && hasData ? {cursor:'pointer',textDecoration:'underline dotted var(--ink-3)',textUnderlineOffset:2} : {};
         return (
           <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.5fr 80px 1fr 1fr 1fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
             <div>
@@ -621,9 +858,9 @@ const FlujoCuentaTable = ({cuentas, monedas}) => {
               <div style={{fontSize:10,color:'var(--ink-3)',textTransform:'capitalize'}}>{c.tipo}</div>
             </div>
             <div style={{fontSize:10,fontFamily:'var(--mono)',color:'var(--ink-3)',letterSpacing:.3}}>{c.moneda}</div>
-            <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>+{fmt(c.ingresos)}</div>
+            <div className="num" onClick={clickable && c.n_ventas > 0 ? ()=>onDrill(c, 'ingresos') : undefined} style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600,...cellClickStyle(c.n_ventas > 0)}} title={c.n_ventas > 0 ? `${c.n_ventas} ventas — click para ver detalle` : ''}>{c.n_ventas > 0 ? '+' + fmt(c.ingresos) : '—'}</div>
             <div className="num" style={{textAlign:'right',color:c.comisiones > 0 ? 'var(--clay)' : 'var(--ink-3)'}}>{c.comisiones > 0 ? '−' + fmt(c.comisiones) : '—'}</div>
-            <div className="num" style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)'}}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
+            <div className="num" onClick={clickable && c.n_gastos > 0 ? ()=>onDrill(c, 'gastos') : undefined} style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)',...cellClickStyle(c.n_gastos > 0)}} title={c.n_gastos > 0 ? `${c.n_gastos} gastos — click para ver detalle` : ''}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
             <div className="num" style={{textAlign:'right',fontWeight:700,color:c.balance >= 0 ? 'var(--moss)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
           </div>
         );
@@ -633,7 +870,7 @@ const FlujoCuentaTable = ({cuentas, monedas}) => {
 };
 
 // ─── Breakdown card con barras horizontales ───
-const BreakdownCard = ({titulo, items, total, variant}) => {
+const BreakdownCard = ({titulo, items, total, variant, flush, onItemClick}) => {
   const COLORS = {
     canal: ['#d4834a','#6b7d4a','#378add','#d4537e','#534ab7','#b07228'],
     cat:   ['#d4537e','#d4834a','#b07228','#6b7d4a','#534ab7','#378add'],
@@ -646,11 +883,15 @@ const BreakdownCard = ({titulo, items, total, variant}) => {
         <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin datos en este periodo</div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {items.slice(0,6).map((it, i) => {
+          {items.slice(0,8).map((it, i) => {
             const pct = total > 0 ? (it.total / total) * 100 : 0;
             const color = colors[i % colors.length];
+            const clickable = typeof onItemClick === 'function';
             return (
-              <div key={it.label}>
+              <div key={it.label} onClick={clickable ? () => onItemClick(it) : undefined} style={{cursor: clickable ? 'pointer' : 'default', padding: clickable ? '2px 4px' : 0, margin: clickable ? '-2px -4px' : 0, borderRadius: 4, transition: 'background .12s'}}
+                onMouseEnter={clickable ? (e)=>e.currentTarget.style.background='var(--paper-sunk)' : undefined}
+                onMouseLeave={clickable ? (e)=>e.currentTarget.style.background='transparent' : undefined}
+              >
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:3,fontSize:11.5}}>
                   <span style={{color:'var(--ink-1)',fontWeight:500}}>{it.label}</span>
                   <span className="num" style={{color:'var(--ink-2)'}}>
@@ -711,4 +952,4 @@ const ChartDaily = ({serie}) => {
   return <canvas ref={canvasRef}/>;
 };
 
-Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia });
+Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia, DrillDownModal, DrillVentasTable, DrillGastosTable });
