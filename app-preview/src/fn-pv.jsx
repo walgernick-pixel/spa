@@ -152,6 +152,10 @@ const PVTurnoFn = () => {
     return d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'short',year:'numeric'});
   })();
 
+  // Retroactivo: creado después de la fecha del turno
+  const retro = turno.creado && turno.fecha && (new Date(turno.creado).toISOString().slice(0,10) > turno.fecha);
+  const creadoFmt = turno.creado ? new Date(turno.creado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '';
+
   return (
     <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>
       {/* Header */}
@@ -167,6 +171,7 @@ const PVTurnoFn = () => {
               <span style={{width:5,height:5,borderRadius:999,background:turno.estado==='abierto'?'var(--moss)':'var(--ink-3)'}}/>
               {estadoLabel} · {turno.hora_inicio || '—'}{turno.hora_fin ? ` → ${turno.hora_fin}` : ''}
             </Chip>
+            {retro && <Chip tone="amber" title={`Creado el ${creadoFmt}`}><Icon name="calendar" size={9} stroke={2}/>Retroactivo · creado {creadoFmt}</Chip>}
             {turno.folio && <span style={{fontSize:11,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>#{String(turno.folio).padStart(4,'0')}</span>}
           </div>
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>{ventas.length} {ventas.length===1?'servicio':'servicios'} · {ventasPorColab.length} {ventasPorColab.length===1?'colaboradora':'colaboradoras'}</div>

@@ -79,6 +79,7 @@ const TurnosListFn = () => {
   const [turnos, setTurnos]       = React.useState([]);
   const [loading, setLoading]     = React.useState(true);
   const [abriendo, setAbriendo]   = React.useState(false);
+  const [modalRetro, setModalR]   = React.useState(false);
 
   const cargar = React.useCallback(async () => {
     setLoading(true);
@@ -131,6 +132,22 @@ const TurnosListFn = () => {
     else navigate('turnos/recibo/' + t.id);
   };
 
+  // Capturar turno retroactivo (fecha en el pasado)
+  const capturarPasado = async ({fecha, horaInicio}) => {
+    const { data: user } = await sb.auth.getUser();
+    const nuevo = {
+      fecha: fecha,
+      hora_inicio: horaInicio,
+      estado: 'abierto',
+      encargada_id: user?.user?.id || null,
+    };
+    const { data, error } = await sb.from('turnos').insert(nuevo).select().single();
+    if (error) { notify('No se pudo capturar: '+error.message, 'err'); return; }
+    notify('Turno retroactivo creado — captura los servicios y ciérralo');
+    setModalR(false);
+    navigate('turnos/pv/' + data.id);
+  };
+
   return (
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
       <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
@@ -139,9 +156,12 @@ const TurnosListFn = () => {
             <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Turnos</div>
             <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Operación diaria · punto de venta</div>
           </div>
-          <Btn variant="clay" icon="plus" size="lg" onClick={abrirTurno} disabled={abriendo}>
-            {abriendo ? 'Abriendo…' : 'Abrir turno'}
-          </Btn>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <Btn variant="ghost" size="md" icon="calendar" onClick={()=>setModalR(true)}>Capturar pasado</Btn>
+            <Btn variant="clay" icon="plus" size="lg" onClick={abrirTurno} disabled={abriendo}>
+              {abriendo ? 'Abriendo…' : 'Abrir turno'}
+            </Btn>
+          </div>
         </div>
 
         <div style={{flex:1,overflowY:'auto'}}>
@@ -192,7 +212,68 @@ const TurnosListFn = () => {
           </div>
         </div>
       </div>
+
+      {modalRetro && (
+        <Modal title="Capturar turno pasado" onClose={()=>setModalR(false)}>
+          <FormRetroactivo onSave={capturarPasado} onCancel={()=>setModalR(false)}/>
+        </Modal>
+      )}
     </div>
+  );
+};
+
+// ─── Formulario para turno retroactivo ───
+const FormRetroactivo = ({onSave, onCancel}) => {
+  // Default: ayer, 09:00
+  const ayer = new Date(); ayer.setDate(ayer.getDate()-1);
+  const [fecha, setFecha]       = React.useState(ayer.toISOString().slice(0,10));
+  const [horaInicio, setHora]   = React.useState('09:00');
+  const [saving, setSaving]     = React.useState(false);
+
+  const fieldStyle = {width:'100%',padding:'9px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'};
+  const labelStyle = {display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6};
+
+  const hoyStr = new Date().toISOString().slice(0,10);
+  const fechaEnFuturo = fecha > hoyStr;
+  const fechaEsHoy    = fecha === hoyStr;
+
+  const guardar = async () => {
+    if (!fecha) return notify('Selecciona una fecha','err');
+    if (!horaInicio) return notify('Selecciona la hora de apertura','err');
+    setSaving(true);
+    await onSave({fecha, horaInicio});
+    setSaving(false);
+  };
+
+  return (
+    <>
+      <div style={{padding:'12px 14px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:8,fontSize:12.5,color:'#7a4e10',lineHeight:1.5,marginBottom:16}}>
+        <Icon name="calendar" size={13} stroke={1.8} style={{verticalAlign:-2,marginRight:6}}/>
+        Esto crea un turno con la <strong>fecha real del servicio</strong>. El sistema guarda aparte la fecha de captura. Úsalo solo si no se pudo registrar el día que pasó (falla de tablet, emergencia, etc.).
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,marginBottom:14}}>
+        <div>
+          <label style={labelStyle}>Fecha del turno (real)</label>
+          <input type="date" value={fecha} max={hoyStr} onChange={e=>setFecha(e.target.value)} style={fieldStyle}/>
+          {fechaEsHoy && <div style={{fontSize:11,color:'var(--ink-3)',marginTop:5}}>Es la fecha de hoy — igual funciona, pero podrías usar "Abrir turno" normal.</div>}
+          {fechaEnFuturo && <div style={{fontSize:11,color:'var(--clay)',marginTop:5}}>⚠️ No se puede elegir fecha futura.</div>}
+        </div>
+        <div>
+          <label style={labelStyle}>Hora de apertura</label>
+          <input type="time" value={horaInicio} onChange={e=>setHora(e.target.value)} style={fieldStyle}/>
+        </div>
+      </div>
+
+      <div style={{fontSize:11.5,color:'var(--ink-3)',lineHeight:1.5,marginBottom:10}}>
+        Después podrás agregar los servicios vendidos y cerrar el turno como lo harías con uno normal.
+      </div>
+
+      <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:12,paddingTop:14,borderTop:'1px solid var(--line-1)'}}>
+        <Btn variant="ghost" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>
+        <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || fechaEnFuturo}>{saving?'Creando…':'Crear turno retroactivo'}</Btn>
+      </div>
+    </>
   );
 };
 
@@ -221,6 +302,9 @@ const TurnoRowFn = ({t, first, onClick}) => {
   const horaInicio = t.hora_inicio || '—';
   const horaFin = t.hora_fin || (t.estado === 'abierto' ? 'en curso' : '—');
 
+  // Retroactivo: creado después de la fecha del turno
+  const retro = t.creado && t.fecha && (new Date(t.creado).toISOString().slice(0,10) > t.fecha);
+
   // Row gradient when abierto (destaca visualmente)
   const rowBg = t.estado==='abierto'
     ? 'linear-gradient(90deg, rgba(227,236,210,.5) 0%, transparent 40%)'
@@ -237,7 +321,10 @@ const TurnoRowFn = ({t, first, onClick}) => {
       <div style={{display:'flex',alignItems:'center',gap:12,minWidth:160}}>
         <div style={{width:8,height:8,borderRadius:999,background:s.dot,boxShadow:t.estado==='abierto'?'0 0 0 4px rgba(79,107,58,.18)':'none'}}/>
         <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1}}>{fechaTxt}</div>
+          <div style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,display:'flex',alignItems:'center',gap:6}}>
+            {fechaTxt}
+            {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
+          </div>
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}</div>
         </div>
       </div>
