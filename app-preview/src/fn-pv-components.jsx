@@ -218,8 +218,8 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         </div>
       </div>
 
-      {/* Fila 2: Canal + % (con auto) */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,marginBottom:14}}>
+      {/* Fila 2: Canal + % (bloqueado, viene del canal) */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 180px',gap:12,marginBottom:14}}>
         <div>
           <label style={labelStyle}>Canal de venta</label>
           <select value={canalId} onChange={e=>cambiarCanal(e.target.value)} style={fieldStyle}>
@@ -228,10 +228,11 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         </div>
         <div>
           <label style={labelStyle}>% terapeuta</label>
-          <div style={{position:'relative'}}>
-            <input type="number" step="0.01" min="0" max="100" value={comisionPct} onChange={e=>setPct(e.target.value)} style={{...fieldStyle,paddingRight:26,textAlign:'right'}} className="num"/>
-            <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:12}}>%</span>
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',fontSize:15,fontWeight:600,fontFamily:'var(--serif)',letterSpacing:-.2,color:'var(--ink-1)',background:'var(--paper-sunk)',border:'1px solid var(--line-2)',borderRadius:8,cursor:'not-allowed'}}>
+            <Icon name="lock" size={11} color="var(--ink-3)"/>
+            <span className="num" style={{flex:1,textAlign:'right'}}>{pctNum % 1 === 0 ? pctNum.toFixed(0) : pctNum.toFixed(2)}%</span>
           </div>
+          <div style={{fontSize:10,color:'var(--ink-3)',marginTop:4,lineHeight:1.3}}>Definido por el canal. Para cambiarlo, edita el canal en Configuración.</div>
         </div>
       </div>
 
