@@ -1,20 +1,19 @@
-// Sidebar + app shell
-const Sidebar = ({active='turnos', user={name:'Carmen',role:'Encargada',tone:'clay'}}) => {
+// Sidebar — versión con item "Gastos" agregado
+const Sidebar = ({active='gastos', user={name:'Carmen',role:'Encargada',tone:'clay'}}) => {
   const items=[
-    {id:'turnos',label:'Punto de venta',icon:'receipt',badge:'1'},
+    {id:'turnos',label:'Punto de venta',icon:'receipt'},
+    {id:'gastos',label:'Gastos',icon:'wallet'},
     {id:'dash',label:'Dashboard',icon:'chart'},
   ];
   const cfg=[
+    {id:'cuentas',label:'Cuentas y monedas',icon:'coins'},
+    {id:'conceptos',label:'Catálogo de gastos',icon:'wallet'},
+    {id:'servicios',label:'Servicios y comisiones',icon:'sparkles'},
     {id:'colab',label:'Colaboradoras',icon:'users'},
-    {id:'tipos',label:'Tipos de servicio',icon:'sparkles'},
-    {id:'pct',label:'% Comisión',icon:'percent'},
-    {id:'mon',label:'Monedas',icon:'coins'},
     {id:'perm',label:'Perfiles y permisos',icon:'shield'},
   ];
-  const cfgOpen=['colab','tipos','pct','mon','perm'].includes(active);
   return (
     <aside style={{width:248,height:'100%',background:'var(--paper-raised)',borderRight:'1px solid var(--line-1)',display:'flex',flexDirection:'column',fontFamily:'var(--sans)'}}>
-      {/* Brand */}
       <div style={{padding:'22px 20px 18px',borderBottom:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10}}>
         <div style={{width:32,height:32,borderRadius:8,background:'#201c16',display:'flex',alignItems:'center',justifyContent:'center',color:'#faf7f1'}}>
           <Icon name="flower" size={18} color="#faf7f1" stroke={1.5}/>
@@ -25,7 +24,6 @@ const Sidebar = ({active='turnos', user={name:'Carmen',role:'Encargada',tone:'cl
         </div>
       </div>
 
-      {/* Nav */}
       <nav style={{flex:1,padding:'12px 8px',overflowY:'auto'}}>
         {items.map(it=>(
           <SBItem key={it.id} {...it} active={active===it.id}/>
@@ -37,7 +35,6 @@ const Sidebar = ({active='turnos', user={name:'Carmen',role:'Encargada',tone:'cl
         ))}
       </nav>
 
-      {/* Footer user */}
       <div style={{padding:'12px',borderTop:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10}}>
         <Av name={user.name} tone={user.tone} size={36}/>
         <div style={{flex:1,minWidth:0}}>
@@ -60,4 +57,4 @@ const SBItem = ({label,icon,active,indent,badge})=>(
   </button>
 );
 
-Object.assign(window,{Sidebar});
+Object.assign(window,{Sidebar,SBItem});

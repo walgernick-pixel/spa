@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CashFlow Spa — Mockup navegable</title>
+<link rel="stylesheet" href="../mockups/src/tokens.css"/>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden}
+  body{background:#f0eee9;font-family:'Geist',-apple-system,system-ui,sans-serif}
+  #root{height:100vh;width:100vw}
+
+  /* Badge fijo · indica que es un prototipo */
+  .proto-badge{
+    position:fixed; bottom:14px; right:14px; z-index:999;
+    background:#201c16; color:#faf7f1;
+    font-family:'Geist',sans-serif; font-size:10.5px; font-weight:600;
+    letter-spacing:.4px; padding:7px 12px; border-radius:999px;
+    display:inline-flex; align-items:center; gap:7px;
+    box-shadow:0 8px 22px rgba(0,0,0,.22);
+    pointer-events:none;
+  }
+  .proto-badge::before{content:'';width:6px;height:6px;border-radius:999px;background:#d4834a;animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="proto-badge">prototipo de administración · sin datos reales</div>
+
+<!-- Supabase CDN (client library) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+  // Verificación rápida — si el CDN falla, lo sabremos.
+  window.__supabase_loaded = (typeof window.supabase !== 'undefined');
+  if (!window.__supabase_loaded) console.error('[db] supabase CDN failed to load');
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Activa modo embedded: pantallas NO renderean su <Sidebar/> interno -->
+<script>window.__EMBEDDED__ = true;</script>
+
+<!-- ═══ Primitivos compartidos ═══ -->
+<script type="text/babel" src="../mockups/src/primitives.jsx"></script>
+<script type="text/babel" src="../mockups/src/sidebar.jsx"></script>
+<script type="text/babel" src="../mockups/src/gastos-data.jsx"></script>
+
+<!-- ═══ Pantallas del rediseño original (Turnos, PV, Arqueo, Dashboard, Colaboradoras, Recibo, Login) ═══ -->
+<script type="text/babel" src="../src/screen-turnos.jsx"></script>
+<script type="text/babel" src="../src/screen-pv.jsx"></script>
+<script type="text/babel" src="../src/screen-arqueo.jsx"></script>
+<script type="text/babel" src="../src/screen-dash.jsx"></script>
+<script type="text/babel" src="../src/screen-config.jsx"></script>
+<script type="text/babel" src="../src/screen-recibo.jsx"></script>
+
+<!-- ═══ Módulo Gastos (diseñado en este proyecto) ═══ -->
+<script type="text/babel" src="../mockups/src/screen-gastos-list.jsx"></script>
+<script type="text/babel" src="../mockups/src/screen-gastos-form.jsx"></script>
+<script type="text/babel" src="../mockups/src/screen-gastos-detalle.jsx"></script>
+<script type="text/babel" src="../mockups/src/screen-gastos-editar.jsx"></script>
+<script type="text/babel" src="../mockups/src/screen-gastos-resumen.jsx"></script>
+
+<!-- ═══ Configuración (diseñado en este proyecto · versiones mock) ═══ -->
+<script type="text/babel" src="../mockups/src/screen-config-combined.jsx"></script>
+<script type="text/babel" src="../mockups/src/screen-perfiles.jsx"></script>
+
+<!-- ═══ Cliente Supabase + versiones FUNCIONALES que sobreescriben las mock ═══ -->
+<script type="text/babel" src="src/db.jsx"></script>
+<script type="text/babel" src="src/fn-config-cuentas.jsx"></script>
+<script type="text/babel" src="src/fn-config-catalogo.jsx"></script>
+<script type="text/babel" src="src/fn-gastos-list.jsx"></script>
+<script type="text/babel" src="src/fn-gastos-form.jsx"></script>
+<script type="text/babel" src="src/fn-gastos-detalle.jsx"></script>
+<script type="text/babel" src="src/fn-turnos-list.jsx"></script>
+
+<!-- ═══ App-preview: router + shell navegable ═══ -->
+<script type="text/babel" src="src/router.jsx"></script>
+<script type="text/babel" src="src/sidebar-nav.jsx"></script>
+<script type="text/babel" src="src/pages-wrappers.jsx"></script>
+
+<!-- ═══ Root ═══ -->
+<script type="text/babel" data-presets="react">
+const App = () => {
+  const route = useRoute();
+  const base = route.parts[0] || 'login';
+
+  switch(base){
+    // ─── Auth ───
+    case 'login':      return <Login/>;
+
+    // ─── Módulos principales ───
+    case 'turnos':     {
+      const sub = route.parts[1];
+      if(sub==='pv')     return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><PVTurno/></div></AppShell>;
+      if(sub==='arqueo') return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><Arqueo/></div></AppShell>;
+      if(sub==='recibo') return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><Recibo/></div></AppShell>;
+      return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><TurnosList/></div></AppShell>;
+    }
+    case 'gastos':     return <GastosHome/>;
+    case 'dashboard':  return <AppShell active="dash"><div style={{flex:1,overflow:'auto'}}><Dashboard/></div></AppShell>;
+
+    // ─── Configuración ───
+    case 'config':     {
+      const sub = route.parts[1];
+      if(sub==='cuentas')        return <ConfigCuentasPage/>;
+      if(sub==='catalogo')       return <ConfigCatalogoPage/>;
+      if(sub==='servicios')      return <ConfigServiciosPage/>;
+      if(sub==='colaboradoras')  return <AppShell active="colab"><div style={{flex:1,overflow:'auto'}}><ConfigColab/></div></AppShell>;
+      if(sub==='perfiles')       return <ConfigPerfilesPage/>;
+      return <ConfigCuentasPage/>;
+    }
+
+    default: return <Login/>;
+  }
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

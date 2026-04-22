@@ -37,6 +37,9 @@ const Icon = ({name, size=18, stroke=1.6, color='currentColor', style={}}) => {
     case 'trash':   return P('M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6');
     case 'logout':  return P('M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9');
     case 'flower':  return (<svg viewBox={v} style={s}><circle {...common} cx="12" cy="12" r="3"/><path {...common} d="M12 9c0-3 1-6 0-6s-1 3-1 6M12 15c0 3-1 6 0 6s1-3 1-6M9 12c-3 0-6 1-6 0s3-1 6-1M15 12c3 0 6-1 6 0s-3 1-6 1"/></svg>);
+    case 'user':    return (<svg viewBox={v} style={s}><circle {...common} cx="12" cy="8" r="4"/><path {...common} d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>);
+    case 'filter':  return P('M3 5h18l-7 8v5l-4 2v-7L3 5z');
+    case 'home':    return P('M3 12l9-9 9 9M5 10v11h14V10');
     default: return null;
   }
 };
