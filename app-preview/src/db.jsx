@@ -32,4 +32,18 @@ const notify = (msg, tone = 'ok') => {
 
 const confirmar = (msg) => window.confirm(msg);
 
-Object.assign(window, { sb, notify, confirmar, SUPABASE_URL, SUPABASE_ANONKEY });
+// ──────────────────────────────────────────
+// Stub de permisos — se conectará al módulo de auth real después.
+// Por ahora TODOS los permisos devuelven true. Cuando agreguemos
+// auth + roles, esto consultará al usuario logueado y su rol.
+//
+// Permisos en uso:
+//   'ver_dashboard'        → gerencia
+//   'reabrir_turno'        → admin
+//   'ver_turnos_cerrados'  → admin + encargada-del-turno
+//   'editar_turno_cerrado' → admin
+//   'exportar'             → gerencia + admin
+// ──────────────────────────────────────────
+const can = (_permiso) => true;
+
+Object.assign(window, { sb, notify, confirmar, can, SUPABASE_URL, SUPABASE_ANONKEY });
