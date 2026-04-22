@@ -115,11 +115,14 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
   const ejecutadas = c.ventasEjecutadas || c.ventas || [];
   const vendidas   = c.ventasVendidas || [];
 
-  // Agrupar TODO por moneda (ejecutadas + vendidas juntas)
-  const porMoneda = {};
-  const ensureM = (m) => {
-    if (!porMoneda[m]) porMoneda[m] = {
-      moneda: m,
+  // Agrupar TODO por CUENTA (no por moneda) — igual que arqueo
+  const porCuenta = {};
+  const ensureC = (v) => {
+    if (!porCuenta[v.cuenta_id]) porCuenta[v.cuenta_id] = {
+      cuenta_id: v.cuenta_id,
+      cuenta: v.cuenta,
+      cuenta_tipo: v.cuenta_tipo,
+      moneda: v.moneda,
       ejecutadas: [],
       vendidas: [],
       comisionEjec: 0,
@@ -129,24 +132,27 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
     };
   };
   ejecutadas.forEach(v => {
-    ensureM(v.moneda);
-    porMoneda[v.moneda].ejecutadas.push(v);
-    porMoneda[v.moneda].comisionEjec    += Number(v.comision_monto || 0);
-    porMoneda[v.moneda].propina         += Number(v.propina || 0);
-    porMoneda[v.moneda].totalVentaEjec  += Number(v.precio || 0);
+    ensureC(v);
+    porCuenta[v.cuenta_id].ejecutadas.push(v);
+    porCuenta[v.cuenta_id].comisionEjec    += Number(v.comision_monto || 0);
+    porCuenta[v.cuenta_id].propina         += Number(v.propina || 0);
+    porCuenta[v.cuenta_id].totalVentaEjec  += Number(v.precio || 0);
   });
   vendidas.forEach(v => {
-    ensureM(v.moneda);
-    porMoneda[v.moneda].vendidas.push(v);
-    porMoneda[v.moneda].comisionVenta += Number(v.comision_venta_monto || 0);
+    ensureC(v);
+    porCuenta[v.cuenta_id].vendidas.push(v);
+    porCuenta[v.cuenta_id].comisionVenta += Number(v.comision_venta_monto || 0);
   });
-  Object.values(porMoneda).forEach(m => {
-    m.totalRecibir = m.comisionEjec + m.propina + m.comisionVenta;
+  Object.values(porCuenta).forEach(cc => {
+    cc.totalRecibir = cc.comisionEjec + cc.propina + cc.comisionVenta;
   });
-  // Orden: MXN primero, luego por total desc
-  const monedasOrdenadas = Object.values(porMoneda).sort((a,b) => {
-    if (a.moneda === 'MXN') return -1;
-    if (b.moneda === 'MXN') return 1;
+  // Orden: efectivo primero, después terminal, banco. MXN primero dentro de cada tipo.
+  const tipoOrden = {efectivo:0, terminal:1, banco:2};
+  const cuentasOrdenadas = Object.values(porCuenta).sort((a,b) => {
+    const ot = (tipoOrden[a.cuenta_tipo]??9) - (tipoOrden[b.cuenta_tipo]??9);
+    if (ot !== 0) return ot;
+    if (a.moneda === 'MXN' && b.moneda !== 'MXN') return -1;
+    if (b.moneda === 'MXN' && a.moneda !== 'MXN') return 1;
     return b.totalRecibir - a.totalRecibir;
   });
 
@@ -197,21 +203,25 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
         <Icon name="chev-down" size={14} color="var(--ink-3)" style={{transform:open?'rotate(0)':'rotate(-90deg)',transition:'transform .15s'}}/>
       </div>
 
-      {/* Body: agrupado POR MONEDA */}
+      {/* Body: agrupado POR CUENTA (como el arqueo) */}
       {open && (
         <div style={{padding:'12px 14px',display:'flex',flexDirection:'column',gap:10}}>
-          {monedasOrdenadas.map(grupo => {
+          {cuentasOrdenadas.map(grupo => {
             const monMeta = monedas[grupo.moneda];
             const sym = monMeta?.simbolo || '$';
-            const color = grupo.moneda==='MXN'?'var(--ink-blue)':grupo.moneda==='USD'?'var(--moss)':'var(--clay)';
+            const color = grupo.cuenta_tipo === 'efectivo' ? 'var(--moss)'
+                        : grupo.cuenta_tipo === 'terminal' ? 'var(--ink-blue)'
+                        : grupo.cuenta_tipo === 'banco'    ? 'var(--clay)'
+                        : 'var(--ink-2)';
+            const tipoLabel = {efectivo:'Efectivo',terminal:'Terminal',banco:'Banco'}[grupo.cuenta_tipo] || grupo.cuenta_tipo;
             return (
-              <div key={grupo.moneda} style={{border:`1px solid ${color}33`,borderRadius:10,overflow:'hidden'}}>
-                {/* Header de moneda: total MUY prominente */}
-                <div style={{padding:'10px 14px',background:`${color}0f`,borderBottom:`1px solid ${color}22`,display:'flex',alignItems:'baseline',gap:12}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{width:10,height:10,borderRadius:3,background:color}}/>
-                    <span style={{fontSize:12,fontWeight:700,color:color,fontFamily:'var(--mono)',letterSpacing:.5}}>{grupo.moneda}</span>
-                  </div>
+              <div key={grupo.cuenta_id} style={{border:`1px solid ${color}33`,borderRadius:10,overflow:'hidden'}}>
+                {/* Header de cuenta: nombre, tipo, moneda, total a recibir */}
+                <div style={{padding:'10px 14px',background:`${color}0f`,borderBottom:`1px solid ${color}22`,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <span style={{width:10,height:10,borderRadius:3,background:color,flexShrink:0}}/>
+                  <span style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.1}}>{grupo.cuenta}</span>
+                  <span style={{fontSize:9,fontWeight:700,color:color,background:'#fff',padding:'2px 6px',borderRadius:4,border:`1px solid ${color}55`,textTransform:'uppercase',letterSpacing:.3}}>{tipoLabel}</span>
+                  <span style={{fontSize:10,color:'var(--ink-3)',fontFamily:'var(--mono)',letterSpacing:.3}}>{grupo.moneda}</span>
                   <div style={{flex:1}}/>
                   <div style={{textAlign:'right'}}>
                     <span style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginRight:8}}>A recibir</span>
