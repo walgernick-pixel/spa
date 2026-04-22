@@ -222,15 +222,19 @@ const DashboardFn = () => {
         return a.label.localeCompare(b.label);
       });
 
-    // Serie diaria: ventas vs gastos
+    // Serie diaria: ventas vs gastos — rellena TODOS los días del periodo
+    // (incluso los días con $0 para detectar huecos de captura)
     const serieDiaria = {};
+    const dI = new Date(rango.desde + 'T00:00:00');
+    const dF = new Date(rango.hasta + 'T00:00:00');
+    for (let d = new Date(dI); d <= dF; d.setDate(d.getDate() + 1)) {
+      serieDiaria[_ISO(d)] = {ventas: 0, gastos: 0};
+    }
     ventas.forEach(v => {
-      if (!serieDiaria[v.fecha]) serieDiaria[v.fecha] = {ventas:0, gastos:0};
-      serieDiaria[v.fecha].ventas += Number(v.precio_mxn || 0);
+      if (serieDiaria[v.fecha]) serieDiaria[v.fecha].ventas += Number(v.precio_mxn || 0);
     });
     gastos.forEach(g => {
-      if (!serieDiaria[g.fecha]) serieDiaria[g.fecha] = {ventas:0, gastos:0};
-      serieDiaria[g.fecha].gastos += Number(g.monto_mxn || 0);
+      if (serieDiaria[g.fecha]) serieDiaria[g.fecha].gastos += Number(g.monto_mxn || 0);
     });
     const fechasOrdenadas = Object.keys(serieDiaria).sort();
     const serieChart = {
@@ -308,13 +312,39 @@ const DashboardFn = () => {
     });
     const proveedoresOrd = Object.values(porProveedor).sort((a,b) => b.total - a.total);
 
+    // Turnos del periodo — tabla detallada
+    const turnosOrd = [...turnos].sort((a,b) => {
+      if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
+      return (b.hora_inicio||'').localeCompare(a.hora_inicio||'');
+    });
+
+    // Ranking por encargada (quién vendió más)
+    const porEncargada = {};
+    turnos.forEach(t => {
+      const k = t.encargada_id || '_sin';
+      const nombre = t.encargada_nombre || 'Sin encargada';
+      if (!porEncargada[k]) porEncargada[k] = {id:k, nombre, nTurnos:0, ventas:0, comisiones:0, comisionesVenta:0, gastos:0, neto:0, nServicios:0};
+      porEncargada[k].nTurnos += 1;
+      porEncargada[k].ventas += Number(t.total_mxn || 0);
+      porEncargada[k].comisiones += Number(t.comisiones_mxn || 0);
+      porEncargada[k].comisionesVenta += Number(t.comisiones_venta_mxn || 0);
+      porEncargada[k].nServicios += Number(t.n_servicios || 0);
+    });
+    // Los gastos no se asocian directo a encargada (por ahora). Dejamos 0.
+    Object.values(porEncargada).forEach(e => {
+      e.neto = e.ventas - e.comisiones - e.comisionesVenta;
+      e.promedioPorTurno = e.nTurnos > 0 ? e.ventas / e.nTurnos : 0;
+    });
+    const encargadasOrd = Object.values(porEncargada).sort((a,b) => b.ventas - a.ventas);
+
     return {
       totalVentas, totalComis, totalPropinas, totalGastos, netoSpa,
       nTurnos, nServicios, tickProm, difArqueos,
       flujoPorCuenta, serieChart, canalesOrd, categoriasOrd,
       colabsOrd, serviciosOrd, proveedoresOrd,
+      turnosOrd, encargadasOrd,
     };
-  }, [data]);
+  }, [data, rango]);
 
   // Drill-down modal state
   const [drillDown, setDrillDown] = React.useState(null);
@@ -468,6 +498,12 @@ const DashboardFn = () => {
   return (
     <div className="dashboard-root" style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
       <style>{`
+        @media (max-width: 900px) {
+          .cf-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        @media (max-width: 520px) {
+          .cf-kpi-grid { grid-template-columns: 1fr !important; }
+        }
         @media print {
           @page { size: letter; margin: 0.7cm; }
           body * { visibility: hidden; }
@@ -518,8 +554,8 @@ const DashboardFn = () => {
 
         {!loading && derivado && (
           <>
-            {/* KPIs — 3 cols balanced (2 filas x 3) */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(230px, 1fr))',gap:12,marginBottom:20}}>
+            {/* KPIs — 3 cols siempre en desktop para evitar huecos */}
+            <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
               <KpiCard label="Ventas" value={derivado.totalVentas} color="var(--ink-0)" sub={`${derivado.nServicios} servicios`} delta={deltas?.ventas}/>
               <KpiCard label="Gastos" value={derivado.totalGastos} color="#b73f5e" sub={`${data.gastos.length} gastos`} delta={deltas?.gastos} deltaInverted/>
               <KpiCard label="Neto al spa" value={derivado.netoSpa} color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'} sub="ventas − com. − gastos" delta={deltas?.neto} big/>
@@ -592,6 +628,28 @@ const DashboardFn = () => {
               ) : (
                 <BreakdownCard titulo={null} items={derivado.proveedoresOrd.slice(0,8)} total={derivado.totalGastos} variant="cat" flush onItemClick={(it)=>abrirDrill('proveedor', it.label, `Gastos de proveedor "${it.label}"`)}/>
               )}
+            </div>
+
+            {/* Ranking por encargada + Turnos del periodo */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(360px, 1fr))',gap:16,marginBottom:20}}>
+              <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:18}}>
+                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Ranking por encargada</div>
+                <div style={{fontSize:11,color:'var(--ink-3)',marginBottom:12}}>Quién abrió los turnos y cuánto vendió</div>
+                {derivado.encargadasOrd.length === 0 ? (
+                  <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin turnos en este periodo</div>
+                ) : (
+                  <RankingEncargadas encargadas={derivado.encargadasOrd}/>
+                )}
+              </div>
+              <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:18}}>
+                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Turnos del periodo</div>
+                <div style={{fontSize:11,color:'var(--ink-3)',marginBottom:12}}>{derivado.turnosOrd.length} turnos · click para ver detalle</div>
+                {derivado.turnosOrd.length === 0 ? (
+                  <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin turnos en este periodo</div>
+                ) : (
+                  <TurnosTable turnos={derivado.turnosOrd} arqueos={data.arqueos} monedas={data.monedas}/>
+                )}
+              </div>
             </div>
 
             {/* Tendencia 6 meses (independiente del filtro) */}
@@ -759,6 +817,112 @@ const DrillGastosTable = ({items, monedas}) => {
           <div className="num" style={{textAlign:'right',color:'#b73f5e',fontWeight:600}}>{symOf(g.moneda)}{Number(g.monto).toLocaleString('es-MX')}</div>
         </div>
       ))}
+    </div>
+  );
+};
+
+// ─── Ranking por encargada ───
+const RankingEncargadas = ({encargadas}) => {
+  const max = Math.max(...encargadas.map(e => e.ventas));
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      {encargadas.map((e, i) => {
+        const pct = max > 0 ? (e.ventas / max) * 100 : 0;
+        const colors = ['var(--clay)','var(--moss)','var(--ink-blue)','#d4537e','#534ab7','#b07228'];
+        const color = colors[i % colors.length];
+        return (
+          <div key={e.id}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:3,gap:8,fontSize:12}}>
+              <span style={{color:'var(--ink-1)',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                <span style={{color:'var(--ink-3)',fontWeight:700,marginRight:6}}>{i+1}.</span>
+                {e.nombre}
+              </span>
+              <span className="num" style={{whiteSpace:'nowrap'}}>
+                <strong style={{color:'var(--ink-0)'}}>${Math.round(e.ventas).toLocaleString('es-MX')}</strong>
+                <span style={{fontSize:10.5,color:'var(--ink-3)',marginLeft:6}}>{e.nTurnos} turnos</span>
+              </span>
+            </div>
+            <div style={{height:6,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden',marginBottom:3}}>
+              <div style={{height:'100%',width:`${pct}%`,background:color,transition:'width .3s'}}/>
+            </div>
+            <div style={{fontSize:10.5,color:'var(--ink-3)',display:'flex',justifyContent:'space-between',gap:10}} className="num">
+              <span>Prom/turno <strong style={{color:'var(--ink-2)'}}>${Math.round(e.promedioPorTurno).toLocaleString('es-MX')}</strong></span>
+              <span>{e.nServicios} servicios · Neto spa <strong style={{color:'var(--moss)'}}>${Math.round(e.neto).toLocaleString('es-MX')}</strong></span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ─── Tabla turnos del periodo ───
+const TurnosTable = ({turnos, arqueos, monedas}) => {
+  // Mapear arqueos por turno_id
+  const arqByTurno = React.useMemo(() => {
+    const m = {};
+    arqueos.forEach(a => {
+      if (!m[a.turno_id]) m[a.turno_id] = [];
+      m[a.turno_id].push(a);
+    });
+    return m;
+  }, [arqueos]);
+
+  const formatFecha = (iso) => {
+    const d = new Date(iso + 'T00:00:00');
+    const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]}`;
+  };
+
+  const difEnMxn = (arqs) => {
+    if (!arqs || arqs.length === 0) return null;
+    const reps = arqs.filter(a => a.neto_reportado !== null);
+    if (reps.length === 0) return {status:'parcial', monto:0};
+    const suma = reps.reduce((s,a) => {
+      const tc = Number(monedas[a.moneda]?.tc_a_mxn || 1);
+      return s + Number(a.diferencia || 0) * tc;
+    }, 0);
+    if (Math.abs(suma) < 0.5) return {status:'cuadra', monto:0};
+    return {status: suma > 0 ? 'sobra' : 'falta', monto: suma};
+  };
+
+  return (
+    <div style={{maxHeight:360,overflowY:'auto'}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 100px 100px 80px',gap:8,padding:'6px 8px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.3,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)',position:'sticky',top:0,background:'var(--paper-raised)'}}>
+        <div>Fecha · encargada</div>
+        <div className="num" style={{textAlign:'right'}}>Ventas</div>
+        <div className="num" style={{textAlign:'right'}}>Neto</div>
+        <div style={{textAlign:'right'}}>Arqueo</div>
+      </div>
+      {turnos.map(t => {
+        const v = Number(t.total_mxn || 0);
+        const c = Number(t.comisiones_mxn || 0) + Number(t.comisiones_venta_mxn || 0);
+        const neto = v - c;
+        const dif = difEnMxn(arqByTurno[t.id]);
+        return (
+          <div key={t.id} onClick={()=>navigate('turnos/pv/'+t.id)} style={{display:'grid',gridTemplateColumns:'1fr 100px 100px 80px',gap:8,padding:'9px 8px',fontSize:11.5,alignItems:'center',borderBottom:'1px solid var(--line-2)',cursor:'pointer'}}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--paper-sunk)'}
+            onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+          >
+            <div style={{minWidth:0}}>
+              <div style={{color:'var(--ink-0)',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{formatFecha(t.fecha)} · {t.hora_inicio || '—'}</div>
+              <div style={{fontSize:10,color:'var(--ink-3)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                {t.encargada_nombre || 'Sin encargada'} · {t.n_servicios || 0} svc · {t.estado}
+              </div>
+            </div>
+            <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>${Math.round(v).toLocaleString('es-MX')}</div>
+            <div className="num" style={{textAlign:'right',color:'var(--moss)',fontWeight:600}}>${Math.round(neto).toLocaleString('es-MX')}</div>
+            <div style={{textAlign:'right',fontSize:10}}>
+              {dif === null ? <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>
+                : dif.status==='parcial' ? <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>parcial</span>
+                : dif.status==='cuadra' ? <span style={{color:'var(--moss)',fontWeight:700}}>✓</span>
+                : dif.status==='sobra' ? <span style={{color:'var(--moss)',fontWeight:700}}>+${Math.round(dif.monto).toLocaleString('es-MX')}</span>
+                : <span style={{color:'#b73f5e',fontWeight:700}}>−${Math.round(Math.abs(dif.monto)).toLocaleString('es-MX')}</span>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -952,4 +1116,4 @@ const ChartDaily = ({serie}) => {
   return <canvas ref={canvasRef}/>;
 };
 
-Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia, DrillDownModal, DrillVentasTable, DrillGastosTable });
+Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia, DrillDownModal, DrillVentasTable, DrillGastosTable, RankingEncargadas, TurnosTable });
