@@ -18,7 +18,6 @@ const PVTurnoFn = () => {
   const [turnoColabs, setTurnoCol]  = React.useState([]);
   const [loading, setLoading]       = React.useState(true);
   const [modal, setModal]           = React.useState(null); // {tipo, data?}
-  const [cerrando, setCerrando]     = React.useState(false);
 
   // Carga inicial
   const cargar = React.useCallback(async () => {
@@ -74,19 +73,8 @@ const PVTurnoFn = () => {
     cargar();
   };
 
-  // Cerrar turno
-  const cerrarTurno = async () => {
-    const pendientes = ventasPorColab.filter(c => !c.pagado).length;
-    let msg = '¿Cerrar el turno?';
-    if (pendientes > 0) msg += `\n\nHay ${pendientes} ${pendientes===1?'colaboradora':'colaboradoras'} con comisión PENDIENTE de pago. Puedes continuar al arqueo y pagar después, pero no podrás agregar más servicios.`;
-    if (!confirmar(msg)) return;
-    setCerrando(true);
-    const ahora = new Date();
-    const horaFin = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
-    const {error} = await sb.from('turnos').update({estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}).eq('id', turnoId);
-    setCerrando(false);
-    if (error) return notify('Error al cerrar: '+error.message,'err');
-    notify('Turno cerrado. Ahora el arqueo.');
+  // Ir al arqueo (NO cierra el turno, solo navega)
+  const irAArqueo = () => {
     navigate('turnos/arqueo/' + turnoId);
   };
 
@@ -223,14 +211,14 @@ const PVTurnoFn = () => {
           </div>
         )}
 
-        {/* Cerrar turno */}
+        {/* Ir al arqueo */}
         {turno.estado === 'abierto' && ventasPorColab.length > 0 && (
           <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
             <div>
-              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>¿Listas para cerrar el turno?</div>
-              <div style={{fontSize:12,color:'var(--ink-2)'}}>Paga comisiones pendientes, luego pasa al arqueo.</div>
+              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Cuando estén listas, pasa al arqueo</div>
+              <div style={{fontSize:12,color:'var(--ink-2)'}}>Revisa el efectivo. Desde ahí cierras el turno definitivamente (puedes volver antes).</div>
             </div>
-            <Btn variant="moss" icon="arrow-right" size="lg" onClick={cerrarTurno} disabled={cerrando}>{cerrando?'Cerrando…':'Ir a arqueo'}</Btn>
+            <Btn variant="moss" icon="arrow-right" size="lg" onClick={irAArqueo}>Ir a arqueo</Btn>
           </div>
         )}
 

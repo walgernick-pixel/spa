@@ -18,6 +18,7 @@ const ArqueoFn = () => {
   const [notas, setNotas]           = React.useState('');
   const [loading, setLoading]       = React.useState(true);
   const [saving, setSaving]         = React.useState(false);
+  const [cerrando, setCerrando]     = React.useState(false);
 
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
@@ -149,6 +150,22 @@ const ArqueoFn = () => {
     if (error) return notify('Error al guardar arqueo: '+error.message, 'err');
     notify('Arqueo guardado ✓');
     cargar(); // re-cargar para reflejar estado
+  };
+
+  // Cerrar turno DEFINITIVAMENTE (acción separada)
+  const cerrarTurno = async () => {
+    const pendientes = turnoColabs.filter(tc => !tc.comision_pagada_at).length;
+    let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nYa no se podrán agregar ni editar servicios.';
+    if (pendientes > 0) msg += `\n\nHay ${pendientes} ${pendientes===1?'colaboradora':'colaboradoras'} con comisión pendiente. Quedan como pendientes y podrás marcarlas como pagadas después.`;
+    if (!confirmar(msg)) return;
+    setCerrando(true);
+    const ahora = new Date();
+    const horaFin = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const {error} = await sb.from('turnos').update({estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}).eq('id', turnoId);
+    setCerrando(false);
+    if (error) return notify('Error al cerrar: '+error.message, 'err');
+    notify('Turno cerrado ✓');
+    navigate('turnos');
   };
 
   if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando arqueo…</div>;
@@ -323,12 +340,35 @@ const ArqueoFn = () => {
                     <strong>No efectivo:</strong> {noEfectivoPorCanal.map(x=>`${x.cuenta} ${monedas[x.moneda]?.simbolo||'$'}${Math.round(x.total).toLocaleString('es-MX')}`).join(', ')}
                   </div>
                 )}
-                <Btn variant="secondary" size="md" onClick={()=>navigate('turnos')} disabled={saving}>Volver a turnos</Btn>
+                <Btn variant="secondary" size="md" onClick={()=>navigate('turnos/pv/'+turnoId)} disabled={saving}>← Volver al PV</Btn>
                 <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || !hayReportados}>
                   {saving ? 'Guardando…' : (hayArqueoExistente ? 'Actualizar arqueo' : 'Guardar arqueo')}
                 </Btn>
               </div>
             </>
+          )}
+
+          {/* Cerrar turno definitivamente (siempre visible si abierto) */}
+          {turno.estado === 'abierto' && (
+            <div style={{marginTop:16,padding:'18px 20px',background:'rgba(107,125,74,.05)',border:'1.5px dashed var(--moss)',borderRadius:12,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+              <div style={{flex:1,minWidth:240}}>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',marginBottom:3,letterSpacing:-.1}}>Cerrar turno definitivamente</div>
+                <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5}}>Una vez cerrado, <strong>no se pueden agregar ni editar servicios</strong>. El arqueo queda guardado. Si te falta revisar algo, puedes volver al PV antes.</div>
+              </div>
+              <Btn variant="moss" size="lg" icon="check" onClick={cerrarTurno} disabled={cerrando || saving}>
+                {cerrando ? 'Cerrando…' : 'Cerrar turno'}
+              </Btn>
+            </div>
+          )}
+
+          {/* Estado si ya está cerrado */}
+          {turno.estado === 'cerrado' && (
+            <div style={{marginTop:16,padding:'14px 18px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',alignItems:'center',gap:12}}>
+              <Icon name="lock" size={14} color="var(--ink-3)"/>
+              <div style={{fontSize:12.5,color:'var(--ink-2)'}}>
+                Turno cerrado{turno.cerrado ? ` el ${new Date(turno.cerrado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}` : ''}. No se pueden hacer más cambios.
+              </div>
+            </div>
           )}
         </div>
       </div>
