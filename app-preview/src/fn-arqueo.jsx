@@ -229,6 +229,21 @@ const ArqueoFn = () => {
     navigate('turnos');
   };
 
+  // Totales para el recibo imprimible (MXN equivalente)
+  // DEBE ir antes del early return (rules of hooks)
+  const totalesRecibo = React.useMemo(() => {
+    const tcOf = (m) => Number(monedas[m]?.tc_a_mxn || 1);
+    let v=0, c=0, cv=0, p=0;
+    ventas.forEach(vt => {
+      const f = tcOf(vt.moneda);
+      v  += Number(vt.precio || 0) * f;
+      c  += Number(vt.comision_monto || 0) * f;
+      cv += Number(vt.comision_venta_monto || 0) * f;
+      p  += Number(vt.propina || 0) * f;
+    });
+    return { ventas: v, comisiones: c, comVenta: cv, propinas: p, neto: v - c - cv - p };
+  }, [ventas, monedas]);
+
   if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando arqueo…</div>;
   if (!turnoId || !turno) return (
     <div style={{padding:60,textAlign:'center'}}>
@@ -249,20 +264,6 @@ const ArqueoFn = () => {
   const totalVentaMXN = porCuenta.reduce((a,b)=>a+(b.ventasTotal * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const totalEsperadoMXN = porCuenta.reduce((a,b)=>a+(b.netoEsperado * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const hayArqueoExistente = arqueos.length > 0 && arqueos.some(a => a.neto_reportado !== null);
-
-  // Totales para el recibo imprimible (MXN equivalente)
-  const totalesRecibo = React.useMemo(() => {
-    const tcOf = (m) => Number(monedas[m]?.tc_a_mxn || 1);
-    let v=0, c=0, cv=0, p=0;
-    ventas.forEach(vt => {
-      const f = tcOf(vt.moneda);
-      v  += Number(vt.precio || 0) * f;
-      c  += Number(vt.comision_monto || 0) * f;
-      cv += Number(vt.comision_venta_monto || 0) * f;
-      p  += Number(vt.propina || 0) * f;
-    });
-    return { ventas: v, comisiones: c, comVenta: cv, propinas: p, neto: v - c - cv - p };
-  }, [ventas, monedas]);
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>

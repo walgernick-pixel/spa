@@ -18,6 +18,7 @@ const PVTurnoFn = () => {
   const [turnoColabs, setTurnoCol]  = React.useState([]);
   const [loading, setLoading]       = React.useState(true);
   const [modal, setModal]           = React.useState(null); // {tipo, data?}
+  const [allBlocksOpen, setAllOpen] = React.useState(true);
 
   // Carga inicial
   const cargar = React.useCallback(async () => {
@@ -227,6 +228,16 @@ const PVTurnoFn = () => {
           </button>
         )}
 
+        {/* Toggle colapsar/expandir todos los bloques */}
+        {ventasPorColab.length > 1 && (
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:8}}>
+            <button onClick={()=>setAllOpen(!allBlocksOpen)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,padding:'5px 10px',fontSize:11,color:'var(--ink-2)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
+              <Icon name={allBlocksOpen?'chev-down':'chev-right'} size={11} color="var(--ink-3)"/>
+              {allBlocksOpen ? 'Contraer todos' : 'Expandir todos'}
+            </button>
+          </div>
+        )}
+
         {ventasPorColab.length === 0 ? (
           <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
             <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600,color:'var(--ink-1)',marginBottom:6}}>Turno sin servicios aún</div>
@@ -237,6 +248,7 @@ const PVTurnoFn = () => {
             {ventasPorColab.map(c => (
               <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas}
                 turnoAbierto={turno.estado==='abierto'}
+                globalOpen={allBlocksOpen}
                 onTogglePago={()=>togglePago(c.colaboradora_id)}
                 onFirmar={()=>setModal({tipo:'firmar',data:c})}
                 onDelVenta={borrarVenta}
