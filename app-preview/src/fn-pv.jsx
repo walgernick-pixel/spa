@@ -1,0 +1,254 @@
+// ──────────────────────────────────────────
+// PV · Punto de Venta dentro del turno — VERSIÓN FUNCIONAL
+// Reemplaza PVTurno mock. Lee turno_id del hash (turnos/pv/:id).
+// ──────────────────────────────────────────
+
+const PVTurnoFn = () => {
+  // turno_id sale del hash: #turnos/pv/<id>
+  const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/');
+  const turnoId = parts[2] || null;
+
+  const [turno, setTurno]           = React.useState(null);
+  const [ventas, setVentas]         = React.useState([]);
+  const [servicios, setServicios]   = React.useState([]);
+  const [canales, setCanales]       = React.useState([]);
+  const [colabs, setColabs]         = React.useState([]);
+  const [cuentas, setCuentas]       = React.useState([]);
+  const [monedas, setMonedas]       = React.useState({});
+  const [turnoColabs, setTurnoCol]  = React.useState([]);
+  const [loading, setLoading]       = React.useState(true);
+  const [modal, setModal]           = React.useState(null); // {tipo, data?}
+  const [cerrando, setCerrando]     = React.useState(false);
+
+  // Carga inicial
+  const cargar = React.useCallback(async () => {
+    if (!turnoId) { setLoading(false); return; }
+    setLoading(true);
+    const [t, v, s, ca, co, cu, mo, tc] = await Promise.all([
+      sb.from('turnos').select('*').eq('id', turnoId).single(),
+      sb.from('v_ventas').select('*').eq('turno_id', turnoId).order('creado',{ascending:false}),
+      sb.from('servicios').select('*').eq('activo',true).order('orden').order('label'),
+      sb.from('canales_venta').select('*').eq('activo',true).order('orden'),
+      sb.from('colaboradoras').select('*').eq('activo',true).order('nombre'),
+      sb.from('cuentas').select('*').eq('activo',true).order('orden'),
+      sb.from('monedas').select('*'),
+      sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
+    ]);
+    if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
+    setTurno(t.data);
+    setVentas(v.data || []);
+    setServicios(s.data || []);
+    setCanales(ca.data || []);
+    setColabs(co.data || []);
+    setCuentas(cu.data || []);
+    const monMap = {}; (mo.data||[]).forEach(m => monMap[m.codigo] = m);
+    setMonedas(monMap);
+    setTurnoCol(tc.data || []);
+    setLoading(false);
+  }, [turnoId]);
+
+  React.useEffect(()=>{ cargar(); }, [cargar]);
+
+  // Borrar venta
+  const borrarVenta = async (v) => {
+    if (!confirmar(`¿Borrar el servicio de ${v.colaboradora_nombre} por $${Number(v.precio).toLocaleString('es-MX')}?`)) return;
+    const {error} = await sb.from('ventas').update({eliminado: new Date().toISOString()}).eq('id', v.id);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Servicio borrado');
+    cargar();
+  };
+
+  // Marcar/desmarcar pago de comisión
+  const togglePago = async (colabId) => {
+    const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
+    if (existing && existing.comision_pagada_at) {
+      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: null}).eq('id', existing.id);
+      if (error) return notify('Error: '+error.message,'err');
+    } else if (existing) {
+      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: new Date().toISOString()}).eq('id', existing.id);
+      if (error) return notify('Error: '+error.message,'err');
+    } else {
+      const {error} = await sb.from('turno_colaboradoras').insert({turno_id: turnoId, colaboradora_id: colabId, comision_pagada_at: new Date().toISOString()});
+      if (error) return notify('Error: '+error.message,'err');
+    }
+    cargar();
+  };
+
+  // Cerrar turno
+  const cerrarTurno = async () => {
+    const pendientes = ventasPorColab.filter(c => !c.pagado).length;
+    let msg = '¿Cerrar el turno?';
+    if (pendientes > 0) msg += `\n\nHay ${pendientes} ${pendientes===1?'colaboradora':'colaboradoras'} con comisión PENDIENTE de pago. Puedes continuar al arqueo y pagar después, pero no podrás agregar más servicios.`;
+    if (!confirmar(msg)) return;
+    setCerrando(true);
+    const ahora = new Date();
+    const horaFin = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const {error} = await sb.from('turnos').update({estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}).eq('id', turnoId);
+    setCerrando(false);
+    if (error) return notify('Error al cerrar: '+error.message,'err');
+    notify('Turno cerrado. Ahora el arqueo.');
+    navigate('turnos/arqueo/' + turnoId);
+  };
+
+  // Agrupar ventas por colaboradora
+  const ventasPorColab = React.useMemo(()=>{
+    const map = {};
+    ventas.forEach(v => {
+      if (!map[v.colaboradora_id]) map[v.colaboradora_id] = {
+        colaboradora_id: v.colaboradora_id,
+        nombre: v.colaboradora_nombre || 'Sin nombre',
+        alias: v.colaboradora_alias,
+        ventas: [],
+        totalMxn: 0,
+        comisionMxn: 0,
+        propinaMxn: 0,
+      };
+      map[v.colaboradora_id].ventas.push(v);
+      map[v.colaboradora_id].totalMxn    += Number(v.precio_mxn || 0);
+      map[v.colaboradora_id].comisionMxn += Number(v.comision_mxn || 0);
+      map[v.colaboradora_id].propinaMxn  += Number(v.propina_mxn || 0);
+    });
+    // Marcar pago
+    const list = Object.values(map);
+    list.forEach(c => {
+      const tc = turnoColabs.find(x => x.colaboradora_id === c.colaboradora_id);
+      c.pagado = !!(tc && tc.comision_pagada_at);
+    });
+    return list.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  },[ventas, turnoColabs]);
+
+  // Totales del turno
+  const totalVentasMxn    = ventas.reduce((a,v)=>a+Number(v.precio_mxn||0), 0);
+  const totalComisionesMxn= ventas.reduce((a,v)=>a+Number(v.comision_mxn||0), 0);
+  const totalPropinasMxn  = ventas.reduce((a,v)=>a+Number(v.propina_mxn||0), 0);
+  const netoSpaMxn        = totalVentasMxn - totalComisionesMxn;
+
+  if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando turno…</div>;
+  if (!turnoId || !turno) return (
+    <div style={{padding:60,textAlign:'center'}}>
+      <div style={{fontFamily:'var(--serif)',fontSize:22,color:'var(--ink-1)',marginBottom:10}}>Turno no encontrado</div>
+      <Btn variant="secondary" onClick={()=>navigate('turnos')}>← Ir a la lista de turnos</Btn>
+    </div>
+  );
+
+  const estadoTone = {abierto:'moss', cerrado:'neutral', parcial:'amber'}[turno.estado] || 'neutral';
+  const estadoLabel= {abierto:'Abierto', cerrado:'Cerrado', parcial:'Parcial'}[turno.estado] || turno.estado;
+
+  const fechaFmt = (() => {
+    const d = new Date(turno.fecha + 'T00:00:00');
+    return d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'short',year:'numeric'});
+  })();
+
+  return (
+    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{padding:'16px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'center',gap:16}}>
+        <button onClick={()=>navigate('turnos')} style={{background:'transparent',border:'none',display:'flex',alignItems:'center',gap:5,color:'var(--ink-2)',fontSize:13,cursor:'pointer',fontWeight:500,fontFamily:'inherit'}}>
+          <Icon name="arrow-left" size={15}/> Turnos
+        </button>
+        <div style={{width:1,height:22,background:'var(--line-1)'}}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
+            <div style={{fontFamily:'var(--serif)',fontSize:22,fontWeight:500,letterSpacing:-.4,color:'var(--ink-0)',lineHeight:1,textTransform:'capitalize'}}>{fechaFmt}</div>
+            <Chip tone={estadoTone}>
+              <span style={{width:5,height:5,borderRadius:999,background:turno.estado==='abierto'?'var(--moss)':'var(--ink-3)'}}/>
+              {estadoLabel} · {turno.hora_inicio || '—'}{turno.hora_fin ? ` → ${turno.hora_fin}` : ''}
+            </Chip>
+            {turno.folio && <span style={{fontSize:11,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>#{String(turno.folio).padStart(4,'0')}</span>}
+          </div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>{ventas.length} {ventas.length===1?'servicio':'servicios'} · {ventasPorColab.length} {ventasPorColab.length===1?'colaboradora':'colaboradoras'}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:700,letterSpacing:.6,textTransform:'uppercase',marginBottom:4}}>Total turno</div>
+          <Money amount={totalVentasMxn} size={24} weight={600}/>
+        </div>
+      </div>
+
+      {/* Métricas rápidas */}
+      <div style={{padding:'12px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:1}}>
+        <QuickMetric lbl="Ventas" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
+        <QuickMetric lbl="A terapeutas" val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
+        <QuickMetric lbl="Propinas" val={<Money amount={totalPropinasMxn} size={15} weight={600} color="var(--ink-2)"/>} note="100% al terapeuta"/>
+        <QuickMetric lbl="Neto al spa" val={<Money amount={netoSpaMxn} size={15} weight={700} color="var(--moss)"/>}/>
+      </div>
+
+      {/* Body */}
+      <div style={{flex:1,overflowY:'auto',padding:'18px 32px 40px'}}>
+        {/* Barra acción */}
+        {turno.estado === 'abierto' && (
+          <button onClick={()=>setModal({tipo:'venta-nueva'})} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px 16px',border:'1.5px dashed var(--clay)',borderRadius:10,background:'rgba(212,131,74,.08)',fontSize:14,color:'var(--clay)',cursor:'pointer',fontFamily:'inherit',fontWeight:600,marginBottom:14}}>
+            <Icon name="plus" size={16} stroke={2}/> Agregar servicio vendido
+          </button>
+        )}
+
+        {ventasPorColab.length === 0 ? (
+          <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600,color:'var(--ink-1)',marginBottom:6}}>Turno sin servicios aún</div>
+            <div style={{fontSize:13,color:'var(--ink-3)'}}>Registra el primer servicio vendido con el botón de arriba.</div>
+          </div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {ventasPorColab.map(c => (
+              <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas}
+                turnoAbierto={turno.estado==='abierto'}
+                onTogglePago={()=>togglePago(c.colaboradora_id)}
+                onDelVenta={borrarVenta}
+                onEditVenta={(v)=>setModal({tipo:'venta-editar',data:v})}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Cerrar turno */}
+        {turno.estado === 'abierto' && ventasPorColab.length > 0 && (
+          <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>¿Listas para cerrar el turno?</div>
+              <div style={{fontSize:12,color:'var(--ink-2)'}}>Paga comisiones pendientes, luego pasa al arqueo.</div>
+            </div>
+            <Btn variant="moss" icon="arrow-right" size="lg" onClick={cerrarTurno} disabled={cerrando}>{cerrando?'Cerrando…':'Ir a arqueo'}</Btn>
+          </div>
+        )}
+
+        {turno.estado === 'cerrado' && (
+          <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Turno cerrado</div>
+              <div style={{fontSize:12,color:'var(--ink-2)'}}>Puedes consultar el arqueo o generar el recibo.</div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <Btn variant="secondary" onClick={()=>navigate('turnos/arqueo/'+turnoId)}>Ver arqueo</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal nueva/editar venta */}
+      {(modal?.tipo==='venta-nueva' || modal?.tipo==='venta-editar') && (
+        <Modal title={modal.tipo==='venta-nueva' ? 'Registrar servicio vendido' : 'Editar servicio'} onClose={()=>setModal(null)} wide>
+          <FormVenta
+            venta={modal.data}
+            turnoId={turnoId}
+            servicios={servicios}
+            canales={canales}
+            colabs={colabs}
+            cuentas={cuentas}
+            monedas={monedas}
+            onSave={()=>{setModal(null); cargar();}}
+            onCancel={()=>setModal(null)}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+const QuickMetric = ({lbl, val, note}) => (
+  <div style={{padding:'8px 16px',background:'var(--paper-raised)'}}>
+    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:3}}>{lbl}</div>
+    <div>{val}</div>
+    {note && <div style={{fontSize:10,color:'var(--ink-3)',marginTop:2}}>{note}</div>}
+  </div>
+);
+
+Object.assign(window, { PVTurno: PVTurnoFn, QuickMetric });
