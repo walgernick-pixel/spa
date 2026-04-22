@@ -1,8 +1,109 @@
 // ──────────────────────────────────────────
-// PV · Componentes auxiliares: bloque de colaboradora + form de venta
+// PV · Componentes auxiliares: bloque de colaboradora + form de venta + firma
 // ──────────────────────────────────────────
 
-const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago, onDelVenta, onEditVenta}) => {
+// ───────────── Modal de firma digital ─────────────
+const FirmaModal = ({colab, monedas, onSave, onCancel}) => {
+  const canvasRef = React.useRef(null);
+  const sigPadRef = React.useRef(null);
+  const [saving, setSaving] = React.useState(false);
+  const [vacio, setVacio]   = React.useState(true);
+
+  // Inicializar signature_pad al montar
+  React.useEffect(() => {
+    if (!canvasRef.current || !window.SignaturePad) return;
+    // Redimensionar canvas para retina displays
+    const canvas = canvasRef.current;
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width  = canvas.offsetWidth  * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext('2d').scale(ratio, ratio);
+    sigPadRef.current = new window.SignaturePad(canvas, {
+      backgroundColor: 'rgba(255,255,255,0)',
+      penColor: '#201c16',
+      minWidth: 0.8,
+      maxWidth: 2.2,
+    });
+    const onChange = () => setVacio(sigPadRef.current.isEmpty());
+    sigPadRef.current.addEventListener('endStroke', onChange);
+    return () => sigPadRef.current?.removeEventListener('endStroke', onChange);
+  }, []);
+
+  const limpiar = () => { sigPadRef.current?.clear(); setVacio(true); };
+
+  const guardar = async () => {
+    if (!sigPadRef.current || sigPadRef.current.isEmpty()) return notify('Firma vacía — dibuja para confirmar','err');
+    setSaving(true);
+    const dataUrl = sigPadRef.current.toDataURL('image/png');
+    await onSave(dataUrl);
+    setSaving(false);
+  };
+
+  // Resumen de lo que recibe la colab
+  const ejec = colab.ventasEjecutadas || [];
+  const vend = colab.ventasVendidas || [];
+  const porMoneda = {};
+  ejec.forEach(v => {
+    if (!porMoneda[v.moneda]) porMoneda[v.moneda] = 0;
+    porMoneda[v.moneda] += Number(v.comision_monto||0) + Number(v.propina||0);
+  });
+  vend.forEach(v => {
+    if (!porMoneda[v.moneda]) porMoneda[v.moneda] = 0;
+    porMoneda[v.moneda] += Number(v.comision_venta_monto||0);
+  });
+
+  return (
+    <Modal title={`Firma de recibido · ${colab.nombre}`} onClose={onCancel} wide>
+      <div style={{padding:'10px 0'}}>
+        <div style={{padding:'14px 16px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10,marginBottom:14,fontSize:12.5,color:'#7a4e10',lineHeight:1.5}}>
+          Al firmar, <strong>{colab.nombre}</strong> confirma haber recibido sus comisiones y propinas del turno. La firma queda guardada con timestamp.
+        </div>
+
+        {/* Resumen de pago */}
+        <div style={{padding:'12px 16px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,marginBottom:14}}>
+          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:8}}>Recibe</div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            {Object.entries(porMoneda).map(([m, total]) => {
+              const sym = monedas[m]?.simbolo || '$';
+              return (
+                <div key={m} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+                  <span style={{color:'var(--ink-2)'}}>{m}</span>
+                  <span className="num" style={{fontWeight:700,color:'var(--ink-0)',fontFamily:'var(--serif)'}}>{sym}{total.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Canvas de firma */}
+        <div style={{marginBottom:10}}>
+          <label style={{display:'block',fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6}}>Firma aquí con tu dedo o el lápiz</label>
+          <div style={{position:'relative',background:'#fff',border:'1.5px dashed var(--line-1)',borderRadius:10,height:200,overflow:'hidden',touchAction:'none'}}>
+            <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block',touchAction:'none'}}/>
+            {vacio && (
+              <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none',color:'var(--ink-3)',fontSize:13,fontStyle:'italic'}}>
+                ✎ Firma aquí
+              </div>
+            )}
+          </div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:5,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span>La firma se guardará como imagen junto al pago.</span>
+            <button onClick={limpiar} style={{background:'transparent',border:'none',color:'var(--ink-2)',fontSize:11.5,fontWeight:500,cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>Borrar y empezar de nuevo</button>
+          </div>
+        </div>
+
+        <div style={{display:'flex',justifyContent:'flex-end',gap:10,paddingTop:12,borderTop:'1px solid var(--line-1)'}}>
+          <Btn variant="ghost" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>
+          <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || vacio}>{saving?'Guardando…':'Confirmar y firmar'}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+
+
+const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago, onFirmar, onDelVenta, onEditVenta}) => {
   const [open, setOpen] = React.useState(true);
   const tones = ['clay','moss','sand','blue','ink','rose'];
   let h = 0; for (let i=0;i<c.nombre.length;i++) h = (h*31 + c.nombre.charCodeAt(i)) >>> 0;
@@ -51,9 +152,11 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
       <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:c.pagado?'rgba(107,125,74,.08)':'var(--paper-sunk)',borderBottom:'1px solid var(--line-1)',cursor:'pointer',opacity:c.pagado?.85:1}} onClick={()=>setOpen(!open)}>
         <Av name={c.alias || c.nombre} tone={tone} size={38}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <span style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1}}>{c.nombre}</span>
-            {c.pagado ? <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Comisión pagada</Chip> : <Chip tone="amber">Pendiente de pago</Chip>}
+            {!c.pagado && <Chip tone="amber">Pendiente de pago</Chip>}
+            {c.pagado && !c.firmaDataUrl && <Chip tone="ocean"><Icon name="check" size={9} stroke={2.4}/>Pagada · sin firmar</Chip>}
+            {c.pagado && c.firmaDataUrl && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Pagada y firmada</Chip>}
           </div>
           <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:2}}>
             {ejecutadas.length>0 && <>{ejecutadas.length} {ejecutadas.length===1?'servicio':'servicios'} ejecutados</>}
@@ -66,10 +169,26 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
           <div className="num" style={{fontSize:15,fontWeight:700,color:'var(--clay)',fontFamily:'var(--serif)'}}>${Math.round(c.comisionMxn + c.propinaMxn).toLocaleString('es-MX')}</div>
         </div>
         {turnoAbierto && (
-          <button onClick={e=>{e.stopPropagation(); onTogglePago();}} title={c.pagado?'Marcar como pendiente':'Marcar comisión pagada'} style={{background:c.pagado?'var(--moss)':'var(--paper-raised)',border:`1.5px solid ${c.pagado?'var(--moss)':'var(--line-1)'}`,borderRadius:6,padding:'6px 10px',fontSize:11.5,color:c.pagado?'#fff':'var(--ink-2)',cursor:'pointer',fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:5}}>
-            <Icon name="check" size={11} stroke={2} color={c.pagado?'#fff':'var(--ink-3)'}/>
-            {c.pagado ? 'Pagado' : 'Marcar pago'}
-          </button>
+          <div style={{display:'flex',alignItems:'center',gap:6}} onClick={e=>e.stopPropagation()}>
+            {/* Thumbnail firma si existe */}
+            {c.firmaDataUrl && (
+              <div style={{width:50,height:30,border:'1px solid var(--line-1)',borderRadius:4,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}} title={c.firmadoAt ? `Firmado ${new Date(c.firmadoAt).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}` : 'Firmado'}>
+                <img src={c.firmaDataUrl} alt="firma" style={{maxWidth:'100%',maxHeight:'100%',display:'block'}}/>
+              </div>
+            )}
+            {/* Botón Firmar (solo si pagada y sin firma) */}
+            {c.pagado && !c.firmaDataUrl && (
+              <button onClick={onFirmar} title="Firmar recibo de pago" style={{background:'var(--clay)',border:'1.5px solid var(--clay)',borderRadius:6,padding:'6px 10px',fontSize:11.5,color:'#fff',cursor:'pointer',fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:5}}>
+                <Icon name="edit" size={11} stroke={2} color="#fff"/>
+                Firmar
+              </button>
+            )}
+            {/* Botón Marcar pago / Desmarcar */}
+            <button onClick={onTogglePago} title={c.pagado?'Desmarcar (borra firma)':'Marcar comisión pagada'} style={{background:c.pagado?'var(--moss)':'var(--paper-raised)',border:`1.5px solid ${c.pagado?'var(--moss)':'var(--line-1)'}`,borderRadius:6,padding:'6px 10px',fontSize:11.5,color:c.pagado?'#fff':'var(--ink-2)',cursor:'pointer',fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:5}}>
+              <Icon name="check" size={11} stroke={2} color={c.pagado?'#fff':'var(--ink-3)'}/>
+              {c.pagado ? 'Pagado' : 'Marcar pago'}
+            </button>
+          </div>
         )}
         <Icon name="chev-down" size={14} color="var(--ink-3)" style={{transform:open?'rotate(0)':'rotate(-90deg)',transition:'transform .15s'}}/>
       </div>
@@ -457,4 +576,4 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   );
 };
 
-Object.assign(window, { ColabBlockFn, FormVenta });
+Object.assign(window, { ColabBlockFn, FormVenta, FirmaModal });

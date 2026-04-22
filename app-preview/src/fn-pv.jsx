@@ -57,11 +57,15 @@ const PVTurnoFn = () => {
     cargar();
   };
 
-  // Marcar/desmarcar pago de comisión
+  // Marcar/desmarcar pago de comisión (sin firma — la firma es acción aparte)
   const togglePago = async (colabId) => {
     const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
     if (existing && existing.comision_pagada_at) {
-      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: null}).eq('id', existing.id);
+      // DESMARCAR: borra pago Y firma (tendrá que volver a firmar)
+      if (existing.firma_data_url) {
+        if (!confirmar('Al desmarcar el pago también se borrará la firma. ¿Continuar?')) return;
+      }
+      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: null, firma_data_url: null, firmado_at: null}).eq('id', existing.id);
       if (error) return notify('Error: '+error.message,'err');
     } else if (existing) {
       const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: new Date().toISOString()}).eq('id', existing.id);
@@ -70,6 +74,19 @@ const PVTurnoFn = () => {
       const {error} = await sb.from('turno_colaboradoras').insert({turno_id: turnoId, colaboradora_id: colabId, comision_pagada_at: new Date().toISOString()});
       if (error) return notify('Error: '+error.message,'err');
     }
+    cargar();
+  };
+
+  // Guardar la firma digital de una colaboradora
+  const guardarFirma = async (colabId, dataUrl) => {
+    const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
+    if (!existing) return notify('Primero marca como pagado','err');
+    const {error} = await sb.from('turno_colaboradoras').update({
+      firma_data_url: dataUrl,
+      firmado_at: new Date().toISOString(),
+    }).eq('id', existing.id);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Firma guardada ✓');
     cargar();
   };
 
@@ -123,6 +140,8 @@ const PVTurnoFn = () => {
     list.forEach(c => {
       const tc = turnoColabs.find(x => x.colaboradora_id === c.colaboradora_id);
       c.pagado = !!(tc && tc.comision_pagada_at);
+      c.firmaDataUrl = tc?.firma_data_url || null;
+      c.firmadoAt    = tc?.firmado_at || null;
       c.comisionMxn = c.comisionEjecucionMxn + c.comisionVentaMxn; // legacy alias para ColabBlock
     });
     return list.sort((a,b)=>a.nombre.localeCompare(b.nombre));
@@ -215,6 +234,7 @@ const PVTurnoFn = () => {
               <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas}
                 turnoAbierto={turno.estado==='abierto'}
                 onTogglePago={()=>togglePago(c.colaboradora_id)}
+                onFirmar={()=>setModal({tipo:'firmar',data:c})}
                 onDelVenta={borrarVenta}
                 onEditVenta={(v)=>setModal({tipo:'venta-editar',data:v})}
               />
@@ -249,6 +269,19 @@ const PVTurnoFn = () => {
           </div>
         )}
       </div>
+
+      {/* Modal firma digital */}
+      {modal?.tipo==='firmar' && (
+        <FirmaModal
+          colab={modal.data}
+          monedas={monedas}
+          onCancel={()=>setModal(null)}
+          onSave={async (dataUrl) => {
+            await guardarFirma(modal.data.colaboradora_id, dataUrl);
+            setModal(null);
+          }}
+        />
+      )}
 
       {/* Modal nueva/editar venta */}
       {(modal?.tipo==='venta-nueva' || modal?.tipo==='venta-editar') && (
