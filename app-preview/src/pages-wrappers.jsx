@@ -10,9 +10,9 @@ const GastosHome = () => {
   const sub = parts[1] || 'lista';
   const id  = parts[2] || null;
 
+  // El "Resumen" se eliminó: ahora el Dashboard general lo cubre (gastos integrados con ventas)
   const tabs = [
     {id:'lista',   label:'Lista',   icon:'receipt'},
-    {id:'resumen', label:'Resumen', icon:'chart'},
   ];
 
   return (
