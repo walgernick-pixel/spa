@@ -103,8 +103,12 @@ const FirmaModal = ({colab, monedas, onSave, onCancel}) => {
 
 
 
-const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago, onFirmar, onDelVenta, onEditVenta}) => {
+const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, onTogglePago, onFirmar, onDelVenta, onEditVenta}) => {
   const [open, setOpen] = React.useState(true);
+  // Sincroniza con el toggle global (colapsar/expandir todo)
+  React.useEffect(() => {
+    if (typeof globalOpen === 'boolean') setOpen(globalOpen);
+  }, [globalOpen]);
   const tones = ['clay','moss','sand','blue','ink','rose'];
   let h = 0; for (let i=0;i<c.nombre.length;i++) h = (h*31 + c.nombre.charCodeAt(i)) >>> 0;
   const tone = tones[h % tones.length];
