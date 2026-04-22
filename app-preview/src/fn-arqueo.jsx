@@ -39,11 +39,13 @@ const ArqueoFn = () => {
     setMonedas(monMap);
     setTurnoCol(tc.data || []);
     setArqueos(ar.data || []);
-    // Pre-llenar reportados y notas con lo existente
+    // Pre-llenar reportados y notas con lo existente (ahora por cuenta_id)
     const pre = {};
     let notaExistente = '';
     (ar.data||[]).forEach(a => {
-      if (a.neto_reportado !== null && a.neto_reportado !== undefined) pre[a.moneda] = String(a.neto_reportado);
+      if (a.cuenta_id && a.neto_reportado !== null && a.neto_reportado !== undefined) {
+        pre[a.cuenta_id] = String(a.neto_reportado);
+      }
       if (a.notas && !notaExistente) notaExistente = a.notas;
     });
     setReportados(pre);
@@ -66,90 +68,103 @@ const ArqueoFn = () => {
     return m;
   },[turnoColabs]);
 
-  // Cálculo por moneda: solo ventas con cuenta tipo=efectivo
-  const porMoneda = React.useMemo(()=>{
+  // Cálculo por CUENTA (no solo efectivo): cada cuenta con movimiento se arquea
+  const porCuenta = React.useMemo(()=>{
     const map = {};
+    const cuentaMap = {};
+    cuentas.forEach(c => cuentaMap[c.id] = c);
+
     ventas.forEach(v => {
-      if (cuentaTipo[v.cuenta_id] !== 'efectivo') return; // solo efectivo
-      if (!map[v.moneda]) map[v.moneda] = {
-        moneda: v.moneda,
-        ventaEfectivo: 0,
+      const cuenta = cuentaMap[v.cuenta_id];
+      if (!cuenta) return;
+      if (!map[v.cuenta_id]) map[v.cuenta_id] = {
+        cuenta_id: v.cuenta_id,
+        label: cuenta.label,
+        tipo: cuenta.tipo,
+        moneda: cuenta.moneda,
+        ventasTotal: 0,
         comisionesPagadas: 0,
         pendientes: 0,
         nVentas: 0,
       };
-      const bloque = map[v.moneda];
-      bloque.ventaEfectivo += Number(v.precio || 0);
-      bloque.nVentas += 1;
+      const b = map[v.cuenta_id];
+      b.ventasTotal += Number(v.precio || 0);
+      b.nVentas += 1;
 
-      // Comisión ejecutor + propinas
-      const pagEjec = colabPagada[v.colaboradora_id];
-      const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
-      if (pagEjec) bloque.comisionesPagadas += comisionEjec;
-      else         bloque.pendientes += comisionEjec;
-
-      // Comisión vendedor (si aplica)
-      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
-        const pagVend = colabPagada[v.vendedora_id];
-        const comisionVenta = Number(v.comision_venta_monto || 0);
-        if (pagVend) bloque.comisionesPagadas += comisionVenta;
-        else         bloque.pendientes += comisionVenta;
+      // Comisiones solo afectan cuentas EFECTIVO (las comisiones se pagan en efectivo de gaveta)
+      if (b.tipo === 'efectivo') {
+        const pagEjec = colabPagada[v.colaboradora_id];
+        const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
+        if (pagEjec) b.comisionesPagadas += comisionEjec;
+        else         b.pendientes += comisionEjec;
+        if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
+          const pagVend = colabPagada[v.vendedora_id];
+          const comisionVenta = Number(v.comision_venta_monto || 0);
+          if (pagVend) b.comisionesPagadas += comisionVenta;
+          else         b.pendientes += comisionVenta;
+        }
       }
     });
     Object.values(map).forEach(b => {
-      b.netoEsperado = b.ventaEfectivo - b.comisionesPagadas;
+      b.netoEsperado = b.ventasTotal - b.comisionesPagadas;
     });
-    // MXN primero, luego resto alfabético
+    // Orden: Efectivo primero, luego terminal, luego banco. Dentro, MXN primero.
+    const tipoOrden = {efectivo: 0, terminal: 1, banco: 2};
     return Object.values(map).sort((a,b) => {
-      if (a.moneda==='MXN') return -1;
-      if (b.moneda==='MXN') return 1;
-      return a.moneda.localeCompare(b.moneda);
+      const ot = (tipoOrden[a.tipo] ?? 9) - (tipoOrden[b.tipo] ?? 9);
+      if (ot !== 0) return ot;
+      if (a.moneda === 'MXN') return -1;
+      if (b.moneda === 'MXN') return 1;
+      return a.label.localeCompare(b.label);
     });
-  },[ventas, cuentaTipo, colabPagada]);
+  },[ventas, cuentas, colabPagada]);
 
-  // Ventas no-efectivo (tarjeta/transferencia) solo informativas
-  const noEfectivoPorCanal = React.useMemo(()=>{
-    const map = {};
-    ventas.forEach(v => {
-      const tipo = cuentaTipo[v.cuenta_id];
-      if (tipo === 'efectivo' || !tipo) return;
-      const key = v.cuenta;
-      if (!map[key]) map[key] = {cuenta: v.cuenta, tipo, moneda: v.moneda, total: 0, n: 0};
-      map[key].total += Number(v.precio || 0);
-      map[key].n += 1;
-    });
-    return Object.values(map).sort((a,b)=>b.total-a.total);
-  },[ventas, cuentaTipo]);
+  // Autosave silencioso (debounced 700ms)
+  const saveTimerRef  = React.useRef(null);
+  const [autoState, setAutoState] = React.useState('idle'); // 'idle' | 'guardando' | 'guardado'
 
-  const actualizarReportado = (moneda, val) => {
-    setReportados(r => ({...r, [moneda]: val}));
-  };
-
-  const guardar = async () => {
-    if (porMoneda.length === 0) return notify('No hay ventas en efectivo para arquear','warn');
-    setSaving(true);
-
-    const filas = porMoneda.map(b => {
-      const rep = reportados[b.moneda];
-      const repNum = rep !== '' && rep !== undefined ? parseFloat(rep) : null;
-      const dif = repNum !== null ? (repNum - b.netoEsperado) : null;
+  const doSave = React.useCallback(async (repOverride, notasOverride) => {
+    const rep = repOverride || reportados;
+    const notasV = notasOverride !== undefined ? notasOverride : notas;
+    if (porCuenta.length === 0) return {ok:true, skipped:true};
+    setAutoState('guardando');
+    const filas = porCuenta.map(b => {
+      const v = rep[b.cuenta_id];
+      const repNum = v !== '' && v !== undefined && v !== null ? parseFloat(v) : null;
+      const dif = repNum !== null && !isNaN(repNum) ? (repNum - b.netoEsperado) : null;
       return {
         turno_id: turnoId,
-        moneda: b.moneda,
-        venta_efectivo: b.ventaEfectivo,
+        cuenta_id: b.cuenta_id,
+        moneda: b.moneda, // snapshot
+        venta_efectivo: b.ventasTotal,
         comisiones_pagadas: b.comisionesPagadas,
         neto_esperado: b.netoEsperado,
         neto_reportado: repNum,
         diferencia: dif,
-        notas: notas.trim() || null,
+        notas: notasV.trim() || null,
       };
     });
+    const {error} = await sb.from('arqueos').upsert(filas, {onConflict: 'turno_id,cuenta_id'});
+    if (error) { setAutoState('idle'); return {ok:false, error}; }
+    setAutoState('guardado');
+    setTimeout(()=>setAutoState('idle'), 1500);
+    return {ok:true};
+  }, [porCuenta, reportados, notas, turnoId]);
 
-    const {error} = await sb.from('arqueos').upsert(filas, {onConflict: 'turno_id,moneda'});
-    setSaving(false);
-    if (error) return notify('Error al guardar arqueo: '+error.message, 'err');
-    notify('Arqueo guardado ✓');
-    cargar(); // re-cargar para reflejar estado
+  const actualizarReportado = (cuentaId, val) => {
+    setReportados(r => {
+      const next = {...r, [cuentaId]: val};
+      // Debounce autosave
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => doSave(next), 700);
+      return next;
+    });
+  };
+
+  const actualizarNotas = (val) => {
+    setNotas(val);
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => doSave(undefined, val), 800);
   };
 
   // Reabrir turno cerrado (solo admin — por ahora confirma con texto)
@@ -157,7 +172,11 @@ const ArqueoFn = () => {
     const pass = window.prompt('⚠️ REABRIR turno cerrado\n\nEsto permitirá agregar, editar o borrar servicios y modificar el arqueo.\nSolo administradores deberían hacer esto.\n\nEscribe REABRIR (mayúsculas) para confirmar:');
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
-    const {error} = await sb.from('turnos').update({estado:'abierto', hora_fin:null, cerrado:null}).eq('id', turnoId);
+    const nuevaCuenta = (Number(turno.reaperturas)||0) + 1;
+    const {error} = await sb.from('turnos').update({
+      estado:'abierto', hora_fin:null, cerrado:null,
+      reaperturas: nuevaCuenta, reabierto_at: new Date().toISOString(),
+    }).eq('id', turnoId);
     if (error) return notify('Error: '+error.message,'err');
     notify('Turno reabierto');
     cargar();
@@ -185,6 +204,10 @@ const ArqueoFn = () => {
     if (sinFirma.length > 0) msg += `\n\n⚠️ Hay ${sinFirma.length} ${sinFirma.length===1?'colaboradora':'colaboradoras'} pagada${sinFirma.length===1?'':'s'} sin firmar. Podrán firmar después (solo admin podrá reabrir).`;
     if (!confirmar(msg)) return;
     setCerrando(true);
+    // Cancelar cualquier autosave pendiente y guardar sincrónicamente
+    clearTimeout(saveTimerRef.current);
+    const saveResult = await doSave();
+    if (!saveResult.ok) { setCerrando(false); return notify('Error guardando arqueo antes de cerrar: '+saveResult.error.message,'err'); }
     const ahora = new Date();
     const horaFin = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
     const {error} = await sb.from('turnos').update({estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}).eq('id', turnoId);
@@ -211,12 +234,8 @@ const ArqueoFn = () => {
   const estadoLabel= {abierto:'Abierto', cerrado:'Cerrado', parcial:'Parcial'}[turno.estado] || turno.estado;
 
   // Totales globales (convertidos a MXN)
-  const totalVentaMXN = porMoneda.reduce((a,b)=>a+(b.ventaEfectivo * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
-  const totalEsperadoMXN = porMoneda.reduce((a,b)=>a+(b.netoEsperado * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
-  const hayReportados = porMoneda.some(b => {
-    const r = reportados[b.moneda];
-    return r !== '' && r !== undefined && !isNaN(parseFloat(r));
-  });
+  const totalVentaMXN = porCuenta.reduce((a,b)=>a+(b.ventasTotal * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
+  const totalEsperadoMXN = porCuenta.reduce((a,b)=>a+(b.netoEsperado * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const hayArqueoExistente = arqueos.length > 0 && arqueos.some(a => a.neto_reportado !== null);
 
   return (
@@ -232,9 +251,11 @@ const ArqueoFn = () => {
             <div style={{fontFamily:'var(--serif)',fontSize:22,fontWeight:500,letterSpacing:-.4,color:'var(--ink-0)',lineHeight:1,textTransform:'capitalize'}}>Arqueo · {fechaFmt}</div>
             <Chip tone={estadoTone}>{estadoLabel}</Chip>
             {turno.folio && <span style={{fontSize:11,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>#{String(turno.folio).padStart(4,'0')}</span>}
-            {hayArqueoExistente && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Arqueo guardado</Chip>}
+            {Number(turno.reaperturas) > 0 && <Chip tone="amber" title={turno.reabierto_at?`Reabierto ${new Date(turno.reabierto_at).toLocaleDateString('es-MX')}`:''}>Reabierto {turno.reaperturas}×</Chip>}
+            {autoState === 'guardando' && <span style={{fontSize:10.5,color:'var(--ink-3)',fontStyle:'italic'}}>Guardando…</span>}
+            {autoState === 'guardado'  && <span style={{fontSize:10.5,color:'var(--moss)'}}>✓ Guardado</span>}
           </div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>Captura de efectivo físico por moneda al cierre</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>Verificación de todas las cuentas (efectivo, tarjeta, banco) al cierre</div>
         </div>
       </div>
 
@@ -248,86 +269,89 @@ const ArqueoFn = () => {
             </div>
           </div>
 
-          {porMoneda.length === 0 ? (
+          {porCuenta.length === 0 ? (
             <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
-              <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>Sin efectivo que arquear</div>
-              <div style={{fontSize:13,color:'var(--ink-2)'}}>Este turno no tiene ventas en cuentas de efectivo.</div>
-              {noEfectivoPorCanal.length > 0 && (
-                <div style={{marginTop:20,paddingTop:20,borderTop:'1px solid var(--line-1)',fontSize:12,color:'var(--ink-3)',textAlign:'left'}}>
-                  <div style={{fontSize:11,fontWeight:700,color:'var(--ink-2)',letterSpacing:.4,textTransform:'uppercase',marginBottom:8}}>Otras cuentas (solo verificar con banco):</div>
-                  {noEfectivoPorCanal.map(x => (
-                    <div key={x.cuenta} style={{display:'flex',justifyContent:'space-between',padding:'4px 0'}}>
-                      <span>{x.cuenta} ({x.tipo}) · {x.n} {x.n===1?'venta':'ventas'}</span>
-                      <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>{monedas[x.moneda]?.simbolo||'$'}{Number(x.total).toLocaleString('es-MX')}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>Sin ventas que arquear</div>
+              <div style={{fontSize:13,color:'var(--ink-2)'}}>Este turno no tiene ventas registradas.</div>
               <div style={{marginTop:20}}>
                 <Btn variant="secondary" onClick={()=>navigate('turnos/pv/'+turnoId)}>← Volver al PV</Btn>
               </div>
             </div>
           ) : (
             <>
-              {/* Cards por moneda */}
+              {/* Cards por CUENTA */}
               <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:18}}>
-                {porMoneda.map(b => {
+                {porCuenta.map(b => {
                   const sym = monedas[b.moneda]?.simbolo || '$';
-                  const color = b.moneda==='MXN'?'var(--ink-blue)':b.moneda==='USD'?'var(--moss)':'var(--clay)';
-                  const repStr = reportados[b.moneda];
+                  const tipoColor = {
+                    efectivo: 'var(--moss)',
+                    terminal: 'var(--ink-blue)',
+                    banco:    'var(--clay)',
+                  }[b.tipo] || 'var(--ink-2)';
+                  const tipoLabel = {efectivo:'Efectivo',terminal:'Terminal',banco:'Banco'}[b.tipo] || b.tipo;
+                  const color = tipoColor;
+                  const repStr = reportados[b.cuenta_id];
                   const repNum = repStr !== '' && repStr !== undefined ? parseFloat(repStr) : null;
                   const hasRep = repNum !== null && !isNaN(repNum);
                   const dif = hasRep ? (repNum - b.netoEsperado) : null;
                   const difZero = hasRep && Math.abs(dif) < 0.01;
+                  const esEfectivo = b.tipo === 'efectivo';
+                  const reportadoLabel = esEfectivo ? 'Neto en gaveta' : (b.tipo==='terminal' ? 'Total en terminal' : 'Total en cuenta');
 
                   return (
-                    <div key={b.moneda} style={{background:'var(--paper-raised)',border:`1px solid ${color}33`,borderRadius:12,overflow:'hidden'}}>
-                      <div style={{padding:'12px 20px',background:`${color}0d`,borderBottom:`1px solid ${color}22`,display:'flex',alignItems:'center',gap:10}}>
+                    <div key={b.cuenta_id} style={{background:'var(--paper-raised)',border:`1px solid ${color}33`,borderRadius:12,overflow:'hidden'}}>
+                      <div style={{padding:'12px 20px',background:`${color}0d`,borderBottom:`1px solid ${color}22`,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                         <span style={{width:10,height:10,borderRadius:3,background:color}}/>
-                        <span style={{fontSize:14,fontWeight:700,color:color,fontFamily:'var(--mono)',letterSpacing:.5}}>{b.moneda}</span>
-                        <span style={{fontSize:11,color:'var(--ink-3)'}}>· {monedas[b.moneda]?.label || ''}</span>
+                        <span style={{fontSize:14,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.1}}>{b.label}</span>
+                        <span style={{fontSize:10,fontWeight:700,color:color,background:'#fff',padding:'2px 6px',borderRadius:4,border:`1px solid ${color}55`,textTransform:'uppercase',letterSpacing:.4}}>{tipoLabel}</span>
+                        <span style={{fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>· {b.moneda}</span>
                         <div style={{flex:1}}/>
-                        <span style={{fontSize:10.5,color:'var(--ink-3)'}}>{b.nVentas} {b.nVentas===1?'venta':'ventas'} en efectivo</span>
+                        <span style={{fontSize:10.5,color:'var(--ink-3)'}}>{b.nVentas} {b.nVentas===1?'venta':'ventas'}</span>
                       </div>
 
                       <div style={{padding:'18px 20px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
-                        {/* Esperado (lado izq) */}
+                        {/* Esperado (izq) */}
                         <div>
                           <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>Cálculo del sistema</div>
-
                           <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
-                            <span style={{color:'var(--ink-2)'}}>Ventas en efectivo</span>
-                            <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>+ {sym}{b.ventaEfectivo.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                            <span style={{color:'var(--ink-2)'}}>Ventas {esEfectivo?'en efectivo':''}</span>
+                            <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>+ {sym}{b.ventasTotal.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
                           </div>
-                          <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
-                            <span style={{color:'var(--ink-2)'}}>Comisiones pagadas</span>
-                            <span className="num" style={{fontWeight:600,color:'var(--clay)'}}>− {sym}{b.comisionesPagadas.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
-                          </div>
-                          {b.pendientes > 0 && (
-                            <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:11,color:'var(--ink-3)',fontStyle:'italic'}}>
-                              <span>(Pendientes sin pagar: no se descuentan)</span>
-                              <span className="num">{sym}{b.pendientes.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
-                            </div>
+                          {esEfectivo && (
+                            <>
+                              <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
+                                <span style={{color:'var(--ink-2)'}}>Comisiones pagadas</span>
+                                <span className="num" style={{fontWeight:600,color:'var(--clay)'}}>− {sym}{b.comisionesPagadas.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                              </div>
+                              {b.pendientes > 0 && (
+                                <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:11,color:'var(--ink-3)',fontStyle:'italic'}}>
+                                  <span>(Pendientes sin pagar: no se descuentan)</span>
+                                  <span className="num">{sym}{b.pendientes.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                          {!esEfectivo && (
+                            <div style={{fontSize:11,color:'var(--ink-3)',fontStyle:'italic',padding:'4px 0'}}>Las comisiones no salen de esta cuenta — se pagan desde efectivo.</div>
                           )}
                           <div style={{borderTop:'1px solid var(--line-1)',marginTop:8,paddingTop:10,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
-                            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-2)'}}>Neto esperado</span>
+                            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-2)'}}>{esEfectivo?'Neto esperado':'Total esperado'}</span>
                             <span className="num" style={{fontFamily:'var(--serif)',fontSize:22,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.5}}>{sym}{b.netoEsperado.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
                           </div>
                         </div>
 
-                        {/* Reportado (lado der) */}
+                        {/* Reportado (der) */}
                         <div>
-                          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>Captura encargada</div>
+                          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>Verificación</div>
                           <div style={{marginBottom:10}}>
-                            <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.3,color:'var(--ink-2)',marginBottom:5}}>Neto en gaveta (reportado)</label>
+                            <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.3,color:'var(--ink-2)',marginBottom:5}}>{reportadoLabel} (reportado)</label>
                             <div style={{position:'relative'}}>
                               <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontSize:20,fontFamily:'var(--serif)',color:'var(--ink-3)',fontWeight:500}}>{sym}</span>
-                              <input type="number" step="0.01" min="0" value={repStr||''} onChange={e=>actualizarReportado(b.moneda, e.target.value)} placeholder={turno.estado==='cerrado'?'—':'0.00'} disabled={turno.estado==='cerrado'} className="num"
+                              <input type="number" step="0.01" min="0" value={repStr||''} onChange={e=>actualizarReportado(b.cuenta_id, e.target.value)} placeholder={turno.estado==='cerrado'?'—':'0.00'} disabled={turno.estado==='cerrado'} className="num"
                                 style={{width:'100%',padding:'14px 14px 14px 36px',fontSize:22,fontWeight:600,fontFamily:'var(--serif)',letterSpacing:-.3,border:`1.5px solid ${color}55`,borderRadius:10,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper-raised)',color:'var(--ink-0)',textAlign:'right',boxSizing:'border-box',cursor:turno.estado==='cerrado'?'not-allowed':'text'}}
                               />
                             </div>
                           </div>
-                          {/* Diferencia */}
                           {hasRep && (
                             <div style={{padding:'10px 14px',borderRadius:8,background:difZero?'rgba(107,125,74,.1)':(dif>0?'rgba(107,125,74,.05)':'rgba(212,83,126,.1)'),border:`1px solid ${difZero?'var(--moss)':(dif>0?'var(--moss)':'rgba(212,83,126,.5)')}`,display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
                               <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:difZero?'var(--moss)':(dif>0?'var(--moss)':'#b73f5e')}}>
@@ -351,27 +375,17 @@ const ArqueoFn = () => {
               {/* Notas */}
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'16px 20px',marginBottom:18}}>
                 <label style={{display:'block',fontSize:11,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:8}}>Notas del arqueo (opcional)</label>
-                <textarea value={notas} onChange={e=>setNotas(e.target.value)} rows={2} placeholder={turno.estado==='cerrado' && !notas ? 'Sin notas' : 'Observaciones sobre faltantes/sobrantes, incidentes del turno, etc.'} disabled={turno.estado==='cerrado'} style={{width:'100%',padding:'10px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box',resize:'vertical',minHeight:60,cursor:turno.estado==='cerrado'?'not-allowed':'text'}}/>
+                <textarea value={notas} onChange={e=>actualizarNotas(e.target.value)} rows={2} placeholder={turno.estado==='cerrado' && !notas ? 'Sin notas' : 'Observaciones sobre faltantes/sobrantes, incidentes del turno, etc.'} disabled={turno.estado==='cerrado'} style={{width:'100%',padding:'10px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box',resize:'vertical',minHeight:60,cursor:turno.estado==='cerrado'?'not-allowed':'text'}}/>
               </div>
 
-              {/* Resumen global + acciones */}
+              {/* Resumen global + volver */}
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'16px 20px',display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
                 <div>
                   <div style={{fontSize:11,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase',marginBottom:2}}>Total esperado (MXN equiv)</div>
                   <Money amount={totalEsperadoMXN} size={20} weight={700}/>
                 </div>
                 <div style={{flex:1}}/>
-                {noEfectivoPorCanal.length > 0 && (
-                  <div style={{fontSize:11,color:'var(--ink-3)',maxWidth:280,lineHeight:1.4}}>
-                    <strong>No efectivo:</strong> {noEfectivoPorCanal.map(x=>`${x.cuenta} ${monedas[x.moneda]?.simbolo||'$'}${Math.round(x.total).toLocaleString('es-MX')}`).join(', ')}
-                  </div>
-                )}
-                <Btn variant="secondary" size="md" onClick={()=>navigate('turnos/pv/'+turnoId)} disabled={saving}>← Volver al PV</Btn>
-                {turno.estado === 'abierto' && (
-                  <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving || !hayReportados}>
-                    {saving ? 'Guardando…' : (hayArqueoExistente ? 'Actualizar arqueo' : 'Guardar arqueo')}
-                  </Btn>
-                )}
+                <Btn variant="secondary" size="md" onClick={()=>navigate('turnos/pv/'+turnoId)}>← Volver al PV</Btn>
               </div>
             </>
           )}

@@ -349,9 +349,10 @@ const TurnoRowFn = ({t, first, onClick}) => {
       <div style={{display:'flex',alignItems:'center',gap:12,minWidth:160}}>
         <div style={{width:8,height:8,borderRadius:999,background:s.dot,boxShadow:t.estado==='abierto'?'0 0 0 4px rgba(79,107,58,.18)':'none'}}/>
         <div>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,display:'flex',alignItems:'center',gap:6}}>
+          <div style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
             {fechaTxt}
             {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
+            {Number(t.reaperturas)>0 && <span title={t.reabierto_at?`Última reapertura: ${new Date(t.reabierto_at).toLocaleDateString('es-MX')}`:'Reabierto'} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.08)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.25)'}}>Reabierto {t.reaperturas}×</span>}
           </div>
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}</div>
         </div>
@@ -379,10 +380,20 @@ const TurnoRowFn = ({t, first, onClick}) => {
         <span style={{fontWeight:600,color:'var(--ink-0)'}}>{t.n_servicios||0}</span> svc
       </div>
 
-      {/* Total */}
-      <div style={{minWidth:120,textAlign:'right'}}>
-        <Money amount={Number(t.total_mxn||0)} size={18} weight={600}/>
-      </div>
+      {/* Resumen V / C / N */}
+      {(() => {
+        const v = Number(t.total_mxn || 0);
+        const c = Number(t.comisiones_mxn || 0) + Number(t.comisiones_venta_mxn || 0);
+        const n = v - c;
+        const fmt = (x) => '$' + Math.round(x).toLocaleString('es-MX');
+        return (
+          <div style={{minWidth:140,textAlign:'right',fontSize:11.5,lineHeight:1.45}} className="num">
+            <div style={{color:'var(--ink-1)',fontWeight:600}}>V = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(v)}</span></div>
+            <div style={{color:'var(--clay)'}}>C = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(c)}</span></div>
+            <div style={{color:'var(--moss)',fontWeight:700}}>N = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(n)}</span></div>
+          </div>
+        );
+      })()}
 
       {/* Estado + pendientes + arqueo */}
       <div style={{minWidth:118,textAlign:'right'}}>
