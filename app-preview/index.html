@@ -77,6 +77,8 @@
 <script type="text/babel" src="src/fn-gastos-form.jsx"></script>
 <script type="text/babel" src="src/fn-gastos-detalle.jsx"></script>
 <script type="text/babel" src="src/fn-turnos-list.jsx"></script>
+<script type="text/babel" src="src/fn-pv-components.jsx"></script>
+<script type="text/babel" src="src/fn-pv.jsx"></script>
 
 <!-- ═══ App-preview: router + shell navegable ═══ -->
 <script type="text/babel" src="src/router.jsx"></script>
@@ -96,7 +98,7 @@ const App = () => {
     // ─── Módulos principales ───
     case 'turnos':     {
       const sub = route.parts[1];
-      if(sub==='pv')     return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><PVTurno/></div></AppShell>;
+      if(sub==='pv')     return <AppShell active="turnos"><PVTurno/></AppShell>;
       if(sub==='arqueo') return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><Arqueo/></div></AppShell>;
       if(sub==='recibo') return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><Recibo/></div></AppShell>;
       return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><TurnosList/></div></AppShell>;
