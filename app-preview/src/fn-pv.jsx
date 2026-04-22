@@ -220,7 +220,7 @@ const PVTurnoFn = () => {
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',padding:'18px 32px 40px'}}>
+      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',minHeight:0,padding:'18px 20px 80px'}}>
         {/* Barra acción */}
         {turno.estado === 'abierto' && (
           <button onClick={()=>setModal({tipo:'venta-nueva'})} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px 16px',border:'1.5px dashed var(--clay)',borderRadius:10,background:'rgba(212,131,74,.08)',fontSize:14,color:'var(--clay)',cursor:'pointer',fontFamily:'inherit',fontWeight:600,marginBottom:14}}>
