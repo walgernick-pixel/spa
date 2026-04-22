@@ -129,6 +129,11 @@ const PVTurnoFn = () => {
     return list.sort((a,b)=>a.nombre.localeCompare(b.nombre));
   },[ventas, turnoColabs]);
 
+  // Set de ids de colabs ya pagadas — para bloquear modificaciones
+  const colabsPagadasIds = React.useMemo(()=>
+    turnoColabs.filter(tc => tc.comision_pagada_at).map(tc => tc.colaboradora_id),
+  [turnoColabs]);
+
   // Totales del turno
   const totalVentasMxn      = ventas.reduce((a,v)=>a+Number(v.precio_mxn||0), 0);
   const totalComisionesMxn  = ventas.reduce((a,v)=>a+Number(v.comision_mxn||0), 0);
@@ -253,6 +258,7 @@ const PVTurnoFn = () => {
             colabs={colabs}
             cuentas={cuentas}
             monedas={monedas}
+            colabsPagadasIds={colabsPagadasIds}
             onSave={()=>{setModal(null); cargar();}}
             onCancel={()=>setModal(null)}
           />
