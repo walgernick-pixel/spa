@@ -20,8 +20,13 @@ create index if not exists ventas_vendedora_idx on ventas(vendedora_id);
 
 -- ────────────────────────────────────────────
 -- 3) VISTA v_ventas (actualizada: agrega vendedora + c.venta)
+--    NOTA: se hace drop porque Postgres no permite renombrar/
+--    reordenar columnas con `create or replace view`.
 -- ────────────────────────────────────────────
-create or replace view v_ventas as
+drop view if exists v_turnos_resumen;
+drop view if exists v_ventas;
+
+create view v_ventas as
 select
   v.id,
   v.folio,
@@ -65,7 +70,7 @@ where v.eliminado is null;
 -- ────────────────────────────────────────────
 -- 4) VISTA v_turnos_resumen (actualizada: suma c.venta)
 -- ────────────────────────────────────────────
-create or replace view v_turnos_resumen as
+create view v_turnos_resumen as
 select
   t.id,
   t.folio,
