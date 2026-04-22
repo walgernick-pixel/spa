@@ -182,6 +182,18 @@ const ArqueoFn = () => {
     cargar();
   };
 
+  // Imprimir recibo: fuerza autosave y dispara diálogo de impresión del navegador
+  const imprimirRecibo = async () => {
+    // Flush pending autosave para que el PDF refleje lo último capturado
+    clearTimeout(saveTimerRef.current);
+    if (porCuenta.length > 0) {
+      const r = await doSave();
+      if (!r.ok && !r.skipped) return notify('Error guardando antes de imprimir: '+r.error.message,'err');
+    }
+    // Pequeño delay para que el DOM actualice el componente imprimible
+    setTimeout(()=>window.print(), 100);
+  };
+
   // Cerrar turno DEFINITIVAMENTE (acción separada)
   const cerrarTurno = async () => {
     // 1) Calcular colabs que intervinieron en el turno (ejecutor o vendedora)
@@ -200,8 +212,8 @@ const ArqueoFn = () => {
     }
     // 3) Avisar si hay firmas pendientes pero permitir cerrar
     const sinFirma = turnoColabs.filter(tc => tc.comision_pagada_at && !tc.firma_data_url);
-    let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nYa no se podrán agregar, editar ni borrar servicios. El arqueo queda bloqueado.';
-    if (sinFirma.length > 0) msg += `\n\n⚠️ Hay ${sinFirma.length} ${sinFirma.length===1?'colaboradora':'colaboradoras'} pagada${sinFirma.length===1?'':'s'} sin firmar. Podrán firmar después (solo admin podrá reabrir).`;
+    let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nDespués de cerrar, este turno DESAPARECE de tu pantalla y no podrás volver a imprimir el recibo (solo un administrador podrá).\n\n⚠️ Asegúrate de haber imprimido el recibo antes de continuar.';
+    if (sinFirma.length > 0) msg += `\n\n(Hay ${sinFirma.length} ${sinFirma.length===1?'colaboradora':'colaboradoras'} pagada${sinFirma.length===1?'':'s'} sin firmar — podrán firmar después)`;
     if (!confirmar(msg)) return;
     setCerrando(true);
     // Cancelar cualquier autosave pendiente y guardar sincrónicamente
@@ -233,10 +245,24 @@ const ArqueoFn = () => {
   const estadoTone = {abierto:'moss', cerrado:'neutral', parcial:'amber'}[turno.estado] || 'neutral';
   const estadoLabel= {abierto:'Abierto', cerrado:'Cerrado', parcial:'Parcial'}[turno.estado] || turno.estado;
 
-  // Totales globales (convertidos a MXN)
+  // Totales globales (convertidos a MXN) — usados en UI + recibo imprimible
   const totalVentaMXN = porCuenta.reduce((a,b)=>a+(b.ventasTotal * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const totalEsperadoMXN = porCuenta.reduce((a,b)=>a+(b.netoEsperado * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const hayArqueoExistente = arqueos.length > 0 && arqueos.some(a => a.neto_reportado !== null);
+
+  // Totales para el recibo imprimible (MXN equivalente)
+  const totalesRecibo = React.useMemo(() => {
+    const tcOf = (m) => Number(monedas[m]?.tc_a_mxn || 1);
+    let v=0, c=0, cv=0, p=0;
+    ventas.forEach(vt => {
+      const f = tcOf(vt.moneda);
+      v  += Number(vt.precio || 0) * f;
+      c  += Number(vt.comision_monto || 0) * f;
+      cv += Number(vt.comision_venta_monto || 0) * f;
+      p  += Number(vt.propina || 0) * f;
+    });
+    return { ventas: v, comisiones: c, comVenta: cv, propinas: p, neto: v - c - cv - p };
+  }, [ventas, monedas]);
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>
@@ -390,13 +416,18 @@ const ArqueoFn = () => {
             </>
           )}
 
-          {/* Cerrar turno definitivamente (siempre visible si abierto) */}
+          {/* Cerrar turno: imprimir recibo + cerrar definitivamente */}
           {turno.estado === 'abierto' && (
             <div style={{marginTop:16,padding:'18px 20px',background:'rgba(107,125,74,.05)',border:'1.5px dashed var(--moss)',borderRadius:12,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
               <div style={{flex:1,minWidth:240}}>
-                <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',marginBottom:3,letterSpacing:-.1}}>Cerrar turno definitivamente</div>
-                <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5}}>Una vez cerrado, <strong>no se pueden agregar ni editar servicios</strong>. El arqueo queda guardado. Si te falta revisar algo, puedes volver al PV antes.</div>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',marginBottom:3,letterSpacing:-.1}}>Cierre del turno</div>
+                <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5}}>
+                  <strong>Imprime el recibo primero</strong>, luego cierra definitivamente. Al cerrar, el turno desaparece de tu pantalla.
+                </div>
               </div>
+              <Btn variant="secondary" size="md" icon="receipt" onClick={imprimirRecibo} disabled={cerrando || saving}>
+                Imprimir recibo
+              </Btn>
               <Btn variant="moss" size="lg" icon="check" onClick={cerrarTurno} disabled={cerrando || saving}>
                 {cerrando ? 'Cerrando…' : 'Cerrar turno'}
               </Btn>
@@ -405,18 +436,34 @@ const ArqueoFn = () => {
 
           {/* Estado si ya está cerrado */}
           {turno.estado === 'cerrado' && (
-            <div style={{marginTop:16,padding:'14px 18px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',alignItems:'center',gap:12}}>
+            <div style={{marginTop:16,padding:'14px 18px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <Icon name="lock" size={14} color="var(--ink-3)"/>
-              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>
+              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)',minWidth:200}}>
                 Turno cerrado{turno.cerrado ? ` el ${new Date(turno.cerrado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}` : ''}. No se pueden hacer más cambios.
               </div>
+              <Btn variant="secondary" size="sm" icon="receipt" onClick={imprimirRecibo}>Imprimir recibo</Btn>
               <Btn variant="ghost" size="sm" onClick={reabrirTurno}>Reabrir turno</Btn>
             </div>
           )}
         </div>
       </div>
+
+      {/* Recibo imprimible (oculto en pantalla, visible en @media print) */}
+      {typeof ReciboPrintable === 'function' && (
+        <ReciboPrintable
+          turno={turno}
+          ventas={ventas}
+          porCuenta={porCuenta}
+          turnoColabs={turnoColabs}
+          monedas={monedas}
+          reportados={reportados}
+          notas={notas}
+          totales={totalesRecibo}
+        />
+      )}
     </div>
   );
 };
 
 Object.assign(window, { Arqueo: ArqueoFn });
+
