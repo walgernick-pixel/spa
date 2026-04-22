@@ -49,10 +49,11 @@ begin
   end loop;
 end $$;
 
--- Nuevo UNIQUE: un arqueo por (turno, cuenta). Para registros legacy con
--- cuenta_id null, permitimos pero no serán consultables por cuenta.
-create unique index if not exists arqueos_turno_cuenta_uq
-  on arqueos(turno_id, cuenta_id) where cuenta_id is not null;
+-- Nuevo UNIQUE constraint real (no índice parcial — ON CONFLICT necesita
+-- un constraint real o un índice SIN predicados).
+alter table arqueos drop constraint if exists arqueos_turno_cuenta_uq;
+drop index  if exists arqueos_turno_cuenta_uq;
+alter table arqueos add constraint arqueos_turno_cuenta_uq unique (turno_id, cuenta_id);
 
 -- ────────────────────────────────────────────
 -- 2) TURNOS: reaperturas + reabierto_at
