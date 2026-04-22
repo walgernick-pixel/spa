@@ -185,9 +185,9 @@ const PVTurnoFn = () => {
   const creadoFmt = turno.creado ? new Date(turno.creado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '';
 
   return (
-    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflow:'hidden'}}>
-      {/* Header */}
-      <div style={{padding:'16px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'center',gap:16}}>
+    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+      {/* Header sticky */}
+      <div style={{position:'sticky',top:0,zIndex:5,padding:'14px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-raised)',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
         <button onClick={()=>navigate('turnos')} style={{background:'transparent',border:'none',display:'flex',alignItems:'center',gap:5,color:'var(--ink-2)',fontSize:13,cursor:'pointer',fontWeight:500,fontFamily:'inherit'}}>
           <Icon name="arrow-left" size={15}/> Turnos
         </button>
@@ -211,7 +211,7 @@ const PVTurnoFn = () => {
       </div>
 
       {/* Métricas rápidas */}
-      <div style={{padding:'12px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:`repeat(${totalComVentaMxn>0?5:4}, 1fr)`,gap:1}}>
+      <div style={{padding:'10px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:`repeat(auto-fit, minmax(120px, 1fr))`,gap:1}}>
         <QuickMetric lbl="Ventas" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
         <QuickMetric lbl="A terapeutas" val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
         {totalComVentaMxn > 0 && <QuickMetric lbl="Comisión por venta" val={<Money amount={totalComVentaMxn} size={15} weight={600} color="var(--ink-blue)"/>}/>}
@@ -220,7 +220,7 @@ const PVTurnoFn = () => {
       </div>
 
       {/* Body */}
-      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',minHeight:0,padding:'18px 20px 80px'}}>
+      <div style={{padding:'18px 20px 80px'}}>
         {/* Barra acción */}
         {turno.estado === 'abierto' && (
           <button onClick={()=>setModal({tipo:'venta-nueva'})} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px 16px',border:'1.5px dashed var(--clay)',borderRadius:10,background:'rgba(212,131,74,.08)',fontSize:14,color:'var(--clay)',cursor:'pointer',fontFamily:'inherit',fontWeight:600,marginBottom:14}}>
