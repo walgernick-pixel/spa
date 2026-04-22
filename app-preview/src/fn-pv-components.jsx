@@ -10,22 +10,39 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
   const ejecutadas = c.ventasEjecutadas || c.ventas || [];
   const vendidas   = c.ventasVendidas || [];
 
-  // Agrupar EJECUTADAS por moneda
-  const ejecPorMoneda = {};
+  // Agrupar TODO por moneda (ejecutadas + vendidas juntas)
+  const porMoneda = {};
+  const ensureM = (m) => {
+    if (!porMoneda[m]) porMoneda[m] = {
+      moneda: m,
+      ejecutadas: [],
+      vendidas: [],
+      comisionEjec: 0,
+      propina: 0,
+      comisionVenta: 0,
+      totalVentaEjec: 0,
+    };
+  };
   ejecutadas.forEach(v => {
-    if (!ejecPorMoneda[v.moneda]) ejecPorMoneda[v.moneda] = {ventas:[], totalVenta:0, totalComision:0, totalPropina:0};
-    ejecPorMoneda[v.moneda].ventas.push(v);
-    ejecPorMoneda[v.moneda].totalVenta    += Number(v.precio || 0);
-    ejecPorMoneda[v.moneda].totalComision += Number(v.comision_monto || 0);
-    ejecPorMoneda[v.moneda].totalPropina  += Number(v.propina || 0);
+    ensureM(v.moneda);
+    porMoneda[v.moneda].ejecutadas.push(v);
+    porMoneda[v.moneda].comisionEjec    += Number(v.comision_monto || 0);
+    porMoneda[v.moneda].propina         += Number(v.propina || 0);
+    porMoneda[v.moneda].totalVentaEjec  += Number(v.precio || 0);
   });
-  // Agrupar VENDIDAS por moneda
-  const vendPorMoneda = {};
   vendidas.forEach(v => {
-    if (!vendPorMoneda[v.moneda]) vendPorMoneda[v.moneda] = {ventas:[], totalVenta:0, totalComisionVenta:0};
-    vendPorMoneda[v.moneda].ventas.push(v);
-    vendPorMoneda[v.moneda].totalVenta         += Number(v.precio || 0);
-    vendPorMoneda[v.moneda].totalComisionVenta += Number(v.comision_venta_monto || 0);
+    ensureM(v.moneda);
+    porMoneda[v.moneda].vendidas.push(v);
+    porMoneda[v.moneda].comisionVenta += Number(v.comision_venta_monto || 0);
+  });
+  Object.values(porMoneda).forEach(m => {
+    m.totalRecibir = m.comisionEjec + m.propina + m.comisionVenta;
+  });
+  // Orden: MXN primero, luego por total desc
+  const monedasOrdenadas = Object.values(porMoneda).sort((a,b) => {
+    if (a.moneda === 'MXN') return -1;
+    if (b.moneda === 'MXN') return 1;
+    return b.totalRecibir - a.totalRecibir;
   });
 
   return (
@@ -57,32 +74,52 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
         <Icon name="chev-down" size={14} color="var(--ink-3)" style={{transform:open?'rotate(0)':'rotate(-90deg)',transition:'transform .15s'}}/>
       </div>
 
-      {/* Body: ejecutadas + vendidas */}
+      {/* Body: agrupado POR MONEDA */}
       {open && (
-        <div style={{padding:'10px 14px'}}>
-          {/* SERVICIOS EJECUTADOS */}
-          {ejecutadas.length > 0 && (
-            <>
-              {vendidas.length > 0 && (
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',padding:'4px 4px 8px'}}>Servicios ejecutados · {ejecutadas.length}</div>
-              )}
-              {Object.entries(ejecPorMoneda).map(([moneda, bloque]) => {
-                const monMeta = monedas[moneda];
-                const color = moneda==='MXN'?'var(--ink-blue)':moneda==='USD'?'var(--moss)':'var(--clay)';
-                return (
-                  <div key={moneda} style={{marginBottom:8,border:`1px solid ${color}22`,borderRadius:8,overflow:'hidden'}}>
-                    <div style={{padding:'6px 12px',background:`${color}0d`,display:'flex',alignItems:'center',gap:10,borderBottom:`1px dashed ${color}33`}}>
-                      <span style={{width:8,height:8,borderRadius:2,background:color}}/>
-                      <span style={{fontSize:11,fontWeight:700,color:color,fontFamily:'var(--mono)',letterSpacing:.4}}>{moneda}</span>
-                      <div style={{flex:1}}/>
-                      <span style={{fontSize:10.5,color:'var(--ink-3)'}}>
-                        Venta <strong className="num" style={{color:'var(--ink-1)'}}>{monMeta?.simbolo||'$'}{Math.round(bloque.totalVenta).toLocaleString('es-MX')}</strong>
-                        {' · '}Com. <strong className="num" style={{color:'var(--clay)'}}>{monMeta?.simbolo||'$'}{Math.round(bloque.totalComision).toLocaleString('es-MX')}</strong>
-                        {bloque.totalPropina>0 && <>{' · '}Prop. <strong className="num" style={{color:'var(--ink-2)'}}>{monMeta?.simbolo||'$'}{Math.round(bloque.totalPropina).toLocaleString('es-MX')}</strong></>}
-                      </span>
-                    </div>
-                    {bloque.ventas.map(v => (
-                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 110px 90px 90px 70px',gap:10,alignItems:'center',padding:'8px 12px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
+        <div style={{padding:'12px 14px',display:'flex',flexDirection:'column',gap:10}}>
+          {monedasOrdenadas.map(grupo => {
+            const monMeta = monedas[grupo.moneda];
+            const sym = monMeta?.simbolo || '$';
+            const color = grupo.moneda==='MXN'?'var(--ink-blue)':grupo.moneda==='USD'?'var(--moss)':'var(--clay)';
+            return (
+              <div key={grupo.moneda} style={{border:`1px solid ${color}33`,borderRadius:10,overflow:'hidden'}}>
+                {/* Header de moneda: total MUY prominente */}
+                <div style={{padding:'10px 14px',background:`${color}0f`,borderBottom:`1px solid ${color}22`,display:'flex',alignItems:'baseline',gap:12}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{width:10,height:10,borderRadius:3,background:color}}/>
+                    <span style={{fontSize:12,fontWeight:700,color:color,fontFamily:'var(--mono)',letterSpacing:.5}}>{grupo.moneda}</span>
+                  </div>
+                  <div style={{flex:1}}/>
+                  <div style={{textAlign:'right'}}>
+                    <span style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginRight:8}}>A recibir</span>
+                    <span className="num" style={{fontSize:20,fontWeight:700,color:color,fontFamily:'var(--serif)',letterSpacing:-.5}}>{sym}{grupo.totalRecibir.toLocaleString('es-MX',{minimumFractionDigits:grupo.totalRecibir%1?2:0,maximumFractionDigits:2})}</span>
+                  </div>
+                </div>
+
+                {/* Sub-desglose: comisión ejec + propinas + comisión venta */}
+                <div style={{padding:'6px 14px',display:'flex',gap:14,fontSize:10.5,color:'var(--ink-3)',borderBottom:'1px dashed var(--line-2)',flexWrap:'wrap'}}>
+                  {grupo.ejecutadas.length > 0 && (
+                    <span>Com. <strong className="num" style={{color:'var(--clay)'}}>{sym}{grupo.comisionEjec.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
+                  )}
+                  {grupo.propina > 0 && (
+                    <span>Propinas <strong className="num" style={{color:'var(--ink-2)'}}>{sym}{grupo.propina.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
+                  )}
+                  {grupo.comisionVenta > 0 && (
+                    <span>Com. venta <strong className="num" style={{color:'var(--ink-blue)'}}>{sym}{grupo.comisionVenta.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
+                  )}
+                  <div style={{flex:1}}/>
+                  {grupo.ejecutadas.length > 0 && <span>· {grupo.ejecutadas.length} ejecutado{grupo.ejecutadas.length!==1?'s':''}</span>}
+                  {grupo.vendidas.length > 0 && <span>· {grupo.vendidas.length} vendido{grupo.vendidas.length!==1?'s':''}</span>}
+                </div>
+
+                {/* Servicios ejecutados en esta moneda */}
+                {grupo.ejecutadas.length > 0 && (
+                  <div>
+                    {grupo.vendidas.length > 0 && (
+                      <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',padding:'7px 14px 4px',background:'var(--paper-sunk)'}}>Servicios ejecutados</div>
+                    )}
+                    {grupo.ejecutadas.map(v => (
+                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 100px 90px 80px 60px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
                           <div style={{fontWeight:600,color:'var(--ink-0)'}}>{v.servicio}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
@@ -92,9 +129,9 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
                             {v.notas && <span>· {v.notas}</span>}
                           </div>
                         </div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>{monMeta?.simbolo||'$'}{Number(v.precio).toLocaleString('es-MX',{minimumFractionDigits:2})}</div>
-                        <div className="num" style={{textAlign:'right',color:'var(--clay)',fontSize:11.5}}>{v.comision_pct}% · {monMeta?.simbolo||'$'}{Math.round(v.comision_monto).toLocaleString('es-MX')}</div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-3)',fontSize:11.5}}>{v.propina>0?`${monMeta?.simbolo||'$'}${Math.round(v.propina).toLocaleString('es-MX')}`:'—'}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{sym}{Number(v.precio).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--clay)',fontSize:11.5,fontWeight:600}}>{v.comision_pct}% · {sym}{Math.round(v.comision_monto).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-3)',fontSize:11.5}}>{v.propina>0?`${sym}${Math.round(v.propina).toLocaleString('es-MX')}`:'—'}</div>
                         <div style={{display:'flex',gap:2,justifyContent:'flex-end'}}>
                           {turnoAbierto && <button onClick={()=>onEditVenta(v)} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="edit" size={12}/></button>}
                           {turnoAbierto && <button onClick={()=>onDelVenta(v)} title="Borrar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="trash" size={12}/></button>}
@@ -102,31 +139,14 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
                       </div>
                     ))}
                   </div>
-                );
-              })}
-            </>
-          )}
+                )}
 
-          {/* VENTAS HECHAS A OTROS */}
-          {vendidas.length > 0 && (
-            <>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'12px 4px 8px'}}>Ventas hechas a otras · {vendidas.length}</div>
-              {Object.entries(vendPorMoneda).map(([moneda, bloque]) => {
-                const monMeta = monedas[moneda];
-                const color = 'var(--ink-blue)';
-                return (
-                  <div key={moneda} style={{marginBottom:8,border:`1px solid ${color}22`,borderRadius:8,overflow:'hidden',background:'rgba(55,138,221,.03)'}}>
-                    <div style={{padding:'6px 12px',background:`${color}0d`,display:'flex',alignItems:'center',gap:10,borderBottom:`1px dashed ${color}33`}}>
-                      <span style={{width:8,height:8,borderRadius:2,background:color}}/>
-                      <span style={{fontSize:11,fontWeight:700,color:color,fontFamily:'var(--mono)',letterSpacing:.4}}>{moneda}</span>
-                      <div style={{flex:1}}/>
-                      <span style={{fontSize:10.5,color:'var(--ink-3)'}}>
-                        Vendido <strong className="num" style={{color:'var(--ink-1)'}}>{monMeta?.simbolo||'$'}{Math.round(bloque.totalVenta).toLocaleString('es-MX')}</strong>
-                        {' · '}Com. venta <strong className="num" style={{color:color}}>{monMeta?.simbolo||'$'}{Math.round(bloque.totalComisionVenta).toLocaleString('es-MX')}</strong>
-                      </span>
-                    </div>
-                    {bloque.ventas.map(v => (
-                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 120px 100px',gap:10,alignItems:'center',padding:'8px 12px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
+                {/* Ventas hechas a otras en esta moneda */}
+                {grupo.vendidas.length > 0 && (
+                  <div style={{background:'rgba(55,138,221,.04)'}}>
+                    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Ventas hechas a otras</div>
+                    {grupo.vendidas.map(v => (
+                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 100px 110px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
                           <div style={{fontWeight:600,color:'var(--ink-0)'}}>{v.servicio}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
@@ -134,15 +154,15 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
                             {v.canal && <Chip tone={v.canal_tone || 'neutral'} style={{fontSize:9,padding:'1px 5px'}}>{v.canal}</Chip>}
                           </div>
                         </div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>{monMeta?.simbolo||'$'}{Number(v.precio).toLocaleString('es-MX',{minimumFractionDigits:2})}</div>
-                        <div className="num" style={{textAlign:'right',color:color,fontSize:11.5,fontWeight:600}}>{v.comision_venta_pct}% · {monMeta?.simbolo||'$'}{Math.round(v.comision_venta_monto||0).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{sym}{Number(v.precio).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-blue)',fontSize:11.5,fontWeight:600}}>{v.comision_venta_pct}% · {sym}{Math.round(v.comision_venta_monto||0).toLocaleString('es-MX')}</div>
                       </div>
                     ))}
                   </div>
-                );
-              })}
-            </>
-          )}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
