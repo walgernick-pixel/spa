@@ -46,9 +46,9 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
   });
 
   return (
-    <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
+    <div style={{background:c.pagado?'var(--paper-sunk)':'var(--paper-raised)',border:`1px solid ${c.pagado?'var(--line-2)':'var(--line-1)'}`,borderRadius:12,overflow:'hidden',filter:c.pagado?'grayscale(.5)':'none',transition:'filter .2s'}}>
       {/* Header bloque */}
-      <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:c.pagado?'rgba(107,125,74,.06)':'var(--paper-sunk)',borderBottom:'1px solid var(--line-1)',cursor:'pointer'}} onClick={()=>setOpen(!open)}>
+      <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:c.pagado?'rgba(107,125,74,.08)':'var(--paper-sunk)',borderBottom:'1px solid var(--line-1)',cursor:'pointer',opacity:c.pagado?.85:1}} onClick={()=>setOpen(!open)}>
         <Av name={c.alias || c.nombre} tone={tone} size={38}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -133,8 +133,9 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
                         <div className="num" style={{textAlign:'right',color:'var(--clay)',fontSize:11.5,fontWeight:600}}>{v.comision_pct}% · {sym}{Math.round(v.comision_monto).toLocaleString('es-MX')}</div>
                         <div className="num" style={{textAlign:'right',color:'var(--ink-3)',fontSize:11.5}}>{v.propina>0?`${sym}${Math.round(v.propina).toLocaleString('es-MX')}`:'—'}</div>
                         <div style={{display:'flex',gap:2,justifyContent:'flex-end'}}>
-                          {turnoAbierto && <button onClick={()=>onEditVenta(v)} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="edit" size={12}/></button>}
-                          {turnoAbierto && <button onClick={()=>onDelVenta(v)} title="Borrar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="trash" size={12}/></button>}
+                          {turnoAbierto && !c.pagado && <button onClick={()=>onEditVenta(v)} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="edit" size={12}/></button>}
+                          {turnoAbierto && !c.pagado && <button onClick={()=>onDelVenta(v)} title="Borrar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="trash" size={12}/></button>}
+                          {turnoAbierto && c.pagado && <Icon name="lock" size={11} color="var(--ink-3)" style={{padding:'4px'}}/>}
                         </div>
                       </div>
                     ))}
@@ -170,10 +171,15 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, onTogglePago,
 };
 
 // ───────────── Formulario de venta ─────────────
-const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas, onSave, onCancel}) => {
+const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas, colabsPagadasIds=[], onSave, onCancel}) => {
   const editando = !!venta;
+  // Colabs disponibles: todas menos las ya pagadas (si editamos, incluir la actual aunque esté pagada)
+  const colabsDisponibles = React.useMemo(()=>{
+    const pagadasSet = new Set(colabsPagadasIds);
+    return colabs.filter(c => !pagadasSet.has(c.id) || (editando && venta.colaboradora_id === c.id));
+  },[colabs, colabsPagadasIds, editando, venta]);
   const [servicioId, setServicio]   = React.useState(venta?.servicio_id || servicios[0]?.id || '');
-  const [colabId, setColab]         = React.useState(venta?.colaboradora_id || colabs[0]?.id || '');
+  const [colabId, setColab]         = React.useState(venta?.colaboradora_id || colabsDisponibles[0]?.id || '');
   const [canalId, setCanal]         = React.useState(venta?.canal_id || canales[0]?.id || '');
   const [cuentaId, setCuenta]       = React.useState(venta?.cuenta_id || cuentas[0]?.id || '');
   const [precio, setPrecio]         = React.useState(venta?.precio || '');
@@ -294,6 +300,20 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     );
   }
 
+  // Todas las colabs ya pagadas y estamos en modo "nuevo"
+  if (!editando && colabsDisponibles.length === 0) {
+    return (
+      <div style={{padding:'10px 0 0'}}>
+        <div style={{padding:'14px 16px',background:'rgba(212,131,74,.1)',border:'1px solid rgba(212,131,74,.4)',borderRadius:10,fontSize:12.5,color:'#8f4e26',lineHeight:1.55,marginBottom:14}}>
+          <strong>Todas las colaboradoras están marcadas como pagadas.</strong> Para agregar más servicios, desmarca el pago de al menos una (botón <em>Pagado</em> en su bloque).
+        </div>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
+          <Btn variant="ghost" size="md" onClick={onCancel}>Cerrar</Btn>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Fila 1: Servicio + Colaboradora */}
@@ -305,10 +325,11 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           </select>
         </div>
         <div>
-          <label style={labelStyle}>Colaboradora</label>
+          <label style={labelStyle}>Colaboradora (ejecuta)</label>
           <select value={colabId} onChange={e=>setColab(e.target.value)} style={fieldStyle}>
-            {colabs.map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
+            {colabsDisponibles.map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
           </select>
+          {colabsPagadasIds.length > 0 && <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4}}>{colabsPagadasIds.length} colaboradora{colabsPagadasIds.length>1?'s':''} pagada{colabsPagadasIds.length>1?'s':''} (oculta{colabsPagadasIds.length>1?'s':''}). Desmarca su pago para usarla.</div>}
         </div>
       </div>
 
@@ -342,7 +363,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
               <label style={labelStyle}>Vendedora (opcional)</label>
               <select value={vendedoraId} onChange={e=>setVendedora(e.target.value)} style={fieldStyle}>
                 <option value="">— Sin vendedora (ejecutor también vendió) —</option>
-                {colabs.filter(c=>c.id!==colabId).map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
+                {colabsDisponibles.filter(c=>c.id!==colabId).map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
               </select>
             </div>
             <div>
