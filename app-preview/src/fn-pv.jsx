@@ -90,38 +90,51 @@ const PVTurnoFn = () => {
     navigate('turnos/arqueo/' + turnoId);
   };
 
-  // Agrupar ventas por colaboradora
+  // Agrupar ventas por colaboradora (como ejecutor O como vendedora)
   const ventasPorColab = React.useMemo(()=>{
     const map = {};
-    ventas.forEach(v => {
-      if (!map[v.colaboradora_id]) map[v.colaboradora_id] = {
-        colaboradora_id: v.colaboradora_id,
-        nombre: v.colaboradora_nombre || 'Sin nombre',
-        alias: v.colaboradora_alias,
-        ventas: [],
+    const ensure = (id, nombre, alias) => {
+      if (!map[id]) map[id] = {
+        colaboradora_id: id,
+        nombre: nombre || 'Sin nombre',
+        alias: alias,
+        ventasEjecutadas: [],
+        ventasVendidas: [],
         totalMxn: 0,
-        comisionMxn: 0,
+        comisionEjecucionMxn: 0,
+        comisionVentaMxn: 0,
         propinaMxn: 0,
       };
-      map[v.colaboradora_id].ventas.push(v);
-      map[v.colaboradora_id].totalMxn    += Number(v.precio_mxn || 0);
-      map[v.colaboradora_id].comisionMxn += Number(v.comision_mxn || 0);
-      map[v.colaboradora_id].propinaMxn  += Number(v.propina_mxn || 0);
+    };
+    ventas.forEach(v => {
+      // Como ejecutor
+      ensure(v.colaboradora_id, v.colaboradora_nombre, v.colaboradora_alias);
+      map[v.colaboradora_id].ventasEjecutadas.push(v);
+      map[v.colaboradora_id].totalMxn              += Number(v.precio_mxn || 0);
+      map[v.colaboradora_id].comisionEjecucionMxn  += Number(v.comision_mxn || 0);
+      map[v.colaboradora_id].propinaMxn            += Number(v.propina_mxn || 0);
+      // Como vendedor (solo si hay vendedora_id y es distinta al ejecutor)
+      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
+        ensure(v.vendedora_id, v.vendedora_nombre, v.vendedora_alias);
+        map[v.vendedora_id].ventasVendidas.push(v);
+        map[v.vendedora_id].comisionVentaMxn += Number(v.comision_venta_mxn || 0);
+      }
     });
-    // Marcar pago
     const list = Object.values(map);
     list.forEach(c => {
       const tc = turnoColabs.find(x => x.colaboradora_id === c.colaboradora_id);
       c.pagado = !!(tc && tc.comision_pagada_at);
+      c.comisionMxn = c.comisionEjecucionMxn + c.comisionVentaMxn; // legacy alias para ColabBlock
     });
     return list.sort((a,b)=>a.nombre.localeCompare(b.nombre));
   },[ventas, turnoColabs]);
 
   // Totales del turno
-  const totalVentasMxn    = ventas.reduce((a,v)=>a+Number(v.precio_mxn||0), 0);
-  const totalComisionesMxn= ventas.reduce((a,v)=>a+Number(v.comision_mxn||0), 0);
-  const totalPropinasMxn  = ventas.reduce((a,v)=>a+Number(v.propina_mxn||0), 0);
-  const netoSpaMxn        = totalVentasMxn - totalComisionesMxn;
+  const totalVentasMxn      = ventas.reduce((a,v)=>a+Number(v.precio_mxn||0), 0);
+  const totalComisionesMxn  = ventas.reduce((a,v)=>a+Number(v.comision_mxn||0), 0);
+  const totalComVentaMxn    = ventas.reduce((a,v)=>a+Number(v.comision_venta_mxn||0), 0);
+  const totalPropinasMxn    = ventas.reduce((a,v)=>a+Number(v.propina_mxn||0), 0);
+  const netoSpaMxn          = totalVentasMxn - totalComisionesMxn - totalComVentaMxn;
 
   if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando turno…</div>;
   if (!turnoId || !turno) return (
@@ -165,9 +178,10 @@ const PVTurnoFn = () => {
       </div>
 
       {/* Métricas rápidas */}
-      <div style={{padding:'12px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:1}}>
+      <div style={{padding:'12px 32px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:`repeat(${totalComVentaMxn>0?5:4}, 1fr)`,gap:1}}>
         <QuickMetric lbl="Ventas" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
         <QuickMetric lbl="A terapeutas" val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
+        {totalComVentaMxn > 0 && <QuickMetric lbl="Comisión por venta" val={<Money amount={totalComVentaMxn} size={15} weight={600} color="var(--ink-blue)"/>}/>}
         <QuickMetric lbl="Propinas" val={<Money amount={totalPropinasMxn} size={15} weight={600} color="var(--ink-2)"/>} note="100% al terapeuta"/>
         <QuickMetric lbl="Neto al spa" val={<Money amount={netoSpaMxn} size={15} weight={700} color="var(--moss)"/>}/>
       </div>

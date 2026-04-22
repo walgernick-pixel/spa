@@ -124,6 +124,8 @@ const FormCanal = ({canal, onSave, onCancel}) => {
   const [comisionDefault, setCom]   = React.useState(canal?.comision_default ?? 50);
   const [tone, setTone]             = React.useState(canal?.tone || 'clay');
   const [activo, setActivo]         = React.useState(canal?.activo ?? true);
+  const [permiteCV, setPermiteCV]   = React.useState(canal?.permite_comision_venta ?? false);
+  const [cvPct, setCvPct]           = React.useState(canal?.comision_venta_pct ?? 0);
   const [saving, setSaving]         = React.useState(false);
 
   const fieldStyle = {width:'100%',padding:'9px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'};
@@ -134,12 +136,17 @@ const FormCanal = ({canal, onSave, onCancel}) => {
     const pct = parseFloat(comisionDefault);
     if (isNaN(pct) || pct < 0 || pct > 100) return notify('La comisión debe estar entre 0 y 100','err');
     setSaving(true);
+    const cvPctNum = permiteCV ? (parseFloat(cvPct) || 0) : 0;
+    if (permiteCV && (cvPctNum < 0 || cvPctNum > 100)) return notify('El % de comisión por venta debe estar entre 0 y 100','err');
+    if (permiteCV && (pct + cvPctNum) > 100) return notify(`El % terapeuta (${pct}) + % comisión venta (${cvPctNum}) no puede ser mayor a 100`,'err');
     const payload = {
       label: label.trim(),
       descripcion: descripcion.trim() || null,
       comision_default: pct,
       tone,
       activo,
+      permite_comision_venta: permiteCV,
+      comision_venta_pct: cvPctNum,
     };
     let error;
     if (editando) {
@@ -197,6 +204,34 @@ const FormCanal = ({canal, onSave, onCancel}) => {
         <label style={labelStyle}>Descripción (opcional)</label>
         <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} rows={2} style={{...fieldStyle,resize:'vertical',minHeight:50}}/>
       </div>
+
+      {/* Comisión por venta */}
+      <div style={{marginBottom:14,padding:'14px 16px',background:permiteCV?'var(--sand-100)':'var(--paper-sunk)',border:'1px solid '+(permiteCV?'#ecd49a':'var(--line-2)'),borderRadius:10}}>
+        <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer'}}>
+          <input type="checkbox" checked={permiteCV} onChange={e=>setPermiteCV(e.target.checked)} style={{marginTop:2}}/>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Permite comisión por venta</div>
+            <div style={{fontSize:11,color:'var(--ink-2)',lineHeight:1.4}}>
+              Cuando un terapeuta vende un servicio que ejecuta otro, el vendedor recibe un % extra del precio.
+            </div>
+          </div>
+        </label>
+        {permiteCV && (
+          <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed #ecd49a'}}>
+            <label style={{...labelStyle,marginBottom:6}}>% de comisión al vendedor</label>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <div style={{position:'relative',width:140}}>
+                <input type="number" step="0.01" min="0" max="100" value={cvPct} onChange={e=>setCvPct(e.target.value)} style={{...fieldStyle,paddingRight:26,textAlign:'right',fontSize:15,fontFamily:'var(--serif)',fontWeight:600}} className="num"/>
+                <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:13,fontWeight:600}}>%</span>
+              </div>
+              <div style={{fontSize:11,color:'#7a4e10',lineHeight:1.4,flex:1}}>
+                Ejemplo: venta $1,000 → terapeuta que ejecuta recibe <strong>{parseFloat(comisionDefault)||0}%</strong> (${((parseFloat(comisionDefault)||0)*10).toLocaleString('es-MX')}), vendedora recibe <strong>{parseFloat(cvPct)||0}%</strong> (${((parseFloat(cvPct)||0)*10).toLocaleString('es-MX')}), spa se queda con <strong>{Math.max(0,100-(parseFloat(comisionDefault)||0)-(parseFloat(cvPct)||0))}%</strong>.
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
         <input type="checkbox" checked={activo} onChange={e=>setActivo(e.target.checked)}/>
         <span style={{fontSize:13,color:'var(--ink-1)'}}>Activo (aparece en el PV al cobrar)</span>
@@ -365,6 +400,11 @@ const ServiciosComisionesFn = () => {
                             <span style={{fontSize:15,color:'var(--ink-2)',fontWeight:500,fontFamily:'var(--serif)'}}>%</span>
                             <span style={{fontSize:10,color:'var(--ink-3)',marginLeft:'auto',fontWeight:500}}>spa {(100-pct).toFixed(0)}%</span>
                           </div>
+                          {c.permite_comision_venta && (
+                            <div style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 7px',background:'rgba(107,125,74,.12)',color:'var(--moss)',borderRadius:4,fontSize:9.5,fontWeight:700,letterSpacing:.3,textTransform:'uppercase',marginBottom:8}}>
+                              + {Number(c.comision_venta_pct || 0)}% venta
+                            </div>
+                          )}
                           {c.descripcion && <div style={{fontSize:11,color:'var(--ink-3)',lineHeight:1.4,marginBottom:10,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{c.descripcion}</div>}
                           <div style={{display:'flex',gap:4,alignItems:'center',paddingTop:8,borderTop:'1px solid var(--line-1)'}}>
                             <button onClick={()=>setModal({tipo:'canal-editar',data:c})} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:'4px 6px',color:'var(--ink-2)',borderRadius:4,fontSize:11,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}><Icon name="edit" size={11}/>Editar</button>
