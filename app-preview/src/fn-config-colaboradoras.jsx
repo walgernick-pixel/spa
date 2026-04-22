@@ -7,6 +7,7 @@ const FormColab = ({colab, onSave, onCancel}) => {
   const [nombre, setNombre]         = React.useState(colab?.nombre || '');
   const [apellidos, setApellidos]   = React.useState(colab?.apellidos || '');
   const [alias, setAlias]           = React.useState(colab?.alias || '');
+  const [rfc, setRfc]               = React.useState(colab?.rfc || '');
   const [telefono, setTel]          = React.useState(colab?.telefono || '');
   const [email, setEmail]           = React.useState(colab?.email || '');
   const [especialidad, setEsp]      = React.useState(colab?.especialidad || '');
@@ -26,6 +27,7 @@ const FormColab = ({colab, onSave, onCancel}) => {
       nombre: nombre.trim(),
       apellidos: apellidos.trim() || null,
       alias: alias.trim() || null,
+      rfc: rfc.trim().toUpperCase() || null,
       telefono: telefono.trim() || null,
       email: email.trim() || null,
       especialidad: especialidad.trim() || null,
@@ -61,9 +63,13 @@ const FormColab = ({colab, onSave, onCancel}) => {
           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4}}>Cómo aparece en el PV</div>
         </div>
         <div>
-          <label style={labelStyle}>Especialidad</label>
-          <input value={especialidad} onChange={e=>setEsp(e.target.value)} placeholder="Masaje sueco, facial…" style={fieldStyle}/>
+          <label style={labelStyle}>RFC</label>
+          <input value={rfc} onChange={e=>setRfc(e.target.value.toUpperCase())} placeholder="GATO900101AAA" maxLength={13} style={{...fieldStyle,fontFamily:'var(--mono)',letterSpacing:.5}}/>
         </div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={labelStyle}>Especialidad</label>
+        <input value={especialidad} onChange={e=>setEsp(e.target.value)} placeholder="Masaje sueco, facial…" style={fieldStyle}/>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <div>

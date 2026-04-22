@@ -10,6 +10,8 @@ const FormServicio = ({servicio, onSave, onCancel}) => {
   const [descripcion, setDesc]      = React.useState(servicio?.descripcion || '');
   const [duracion, setDuracion]     = React.useState(servicio?.duracion_min || 60);
   const [precioBase, setPrecio]     = React.useState(servicio?.precio_base || 0);
+  const [precioLibre, setPrecioLibre] = React.useState((servicio?.precio_base ?? null) === 0 || (servicio && !servicio.precio_base));
+  const [tiempoLibre, setTiempoLibre] = React.useState((servicio?.duracion_min ?? null) === 0 || (servicio && !servicio.duracion_min));
   const [activo, setActivo]         = React.useState(servicio?.activo ?? true);
   const [saving, setSaving]         = React.useState(false);
   const editando = !!servicio;
@@ -24,8 +26,8 @@ const FormServicio = ({servicio, onSave, onCancel}) => {
       label: label.trim(),
       codigo: codigo.trim().toUpperCase() || null,
       descripcion: descripcion.trim() || null,
-      duracion_min: parseInt(duracion) || 0,
-      precio_base: parseFloat(precioBase) || 0,
+      duracion_min: tiempoLibre ? 0 : (parseInt(duracion) || 0),
+      precio_base: precioLibre ? 0 : (parseFloat(precioBase) || 0),
       activo,
     };
     let error;
@@ -43,23 +45,48 @@ const FormServicio = ({servicio, onSave, onCancel}) => {
         <label style={labelStyle}>Nombre del servicio</label>
         <input autoFocus value={label} onChange={e=>setLabel(e.target.value)} placeholder="Masaje, Trenzas, Fish Spa…" style={fieldStyle}/>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
-        <div>
-          <label style={labelStyle}>Código (opcional)</label>
-          <input value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase())} placeholder="MASAJE60" style={{...fieldStyle,fontFamily:'var(--mono)',letterSpacing:.5}}/>
-        </div>
-        <div>
-          <label style={labelStyle}>Duración sugerida (min)</label>
-          <input type="number" min="0" value={duracion} onChange={e=>setDuracion(e.target.value)} style={fieldStyle} className="num"/>
-        </div>
-      </div>
       <div style={{marginBottom:14}}>
-        <label style={labelStyle}>Precio base sugerido (MXN)</label>
-        <div style={{position:'relative'}}>
-          <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:13}}>$</span>
-          <input type="number" step="0.01" min="0" value={precioBase} onChange={e=>setPrecio(e.target.value)} style={{...fieldStyle,paddingLeft:24}} className="num"/>
+        <label style={labelStyle}>Código (opcional)</label>
+        <input value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase())} placeholder="MASAJE60" style={{...fieldStyle,fontFamily:'var(--mono)',letterSpacing:.5,maxWidth:240}}/>
+      </div>
+
+      {/* Precio */}
+      <div style={{marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+          <label style={{...labelStyle,marginBottom:0}}>Precio base sugerido (MXN)</label>
+          <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11.5,color:'var(--ink-2)',fontWeight:500}}>
+            <input type="checkbox" checked={precioLibre} onChange={e=>setPrecioLibre(e.target.checked)}/>
+            Precio libre
+          </label>
         </div>
-        <div style={{fontSize:11,color:'var(--ink-3)',marginTop:5,lineHeight:1.4}}>El precio real se captura al momento de la venta — esto solo sugiere un valor.</div>
+        {precioLibre ? (
+          <div style={{padding:'11px 14px',fontSize:12.5,color:'var(--ink-3)',fontStyle:'italic',background:'var(--paper-sunk)',border:'1px dashed var(--line-1)',borderRadius:8,display:'flex',alignItems:'center',gap:8}}>
+            <Icon name="lock" size={12}/> Se captura en el Punto de Venta
+          </div>
+        ) : (
+          <div style={{position:'relative'}}>
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:13}}>$</span>
+            <input type="number" step="0.01" min="0" value={precioBase} onChange={e=>setPrecio(e.target.value)} style={{...fieldStyle,paddingLeft:24}} className="num"/>
+          </div>
+        )}
+      </div>
+
+      {/* Duración */}
+      <div style={{marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+          <label style={{...labelStyle,marginBottom:0}}>Duración sugerida (min)</label>
+          <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11.5,color:'var(--ink-2)',fontWeight:500}}>
+            <input type="checkbox" checked={tiempoLibre} onChange={e=>setTiempoLibre(e.target.checked)}/>
+            Tiempo libre
+          </label>
+        </div>
+        {tiempoLibre ? (
+          <div style={{padding:'11px 14px',fontSize:12.5,color:'var(--ink-3)',fontStyle:'italic',background:'var(--paper-sunk)',border:'1px dashed var(--line-1)',borderRadius:8,display:'flex',alignItems:'center',gap:8}}>
+            <Icon name="lock" size={12}/> Se captura en el Punto de Venta
+          </div>
+        ) : (
+          <input type="number" min="0" value={duracion} onChange={e=>setDuracion(e.target.value)} style={{...fieldStyle,maxWidth:200}} className="num"/>
+        )}
       </div>
       <div style={{marginBottom:14}}>
         <label style={labelStyle}>Descripción (opcional)</label>
@@ -77,10 +104,25 @@ const FormServicio = ({servicio, onSave, onCancel}) => {
   );
 };
 
+const slugifyCanal = (s) => (s||'').toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,30) || 'canal';
+
+const TONES_DISPONIBLES = [
+  {id:'clay',label:'Terracota'},
+  {id:'moss',label:'Musgo'},
+  {id:'blue',label:'Azul'},
+  {id:'rose',label:'Rosa'},
+  {id:'ocean',label:'Océano'},
+  {id:'sand',label:'Arena'},
+];
+
 const FormCanal = ({canal, onSave, onCancel}) => {
+  const editando = !!canal;
   const [label, setLabel]           = React.useState(canal?.label || '');
   const [descripcion, setDesc]      = React.useState(canal?.descripcion || '');
   const [comisionDefault, setCom]   = React.useState(canal?.comision_default ?? 50);
+  const [tone, setTone]             = React.useState(canal?.tone || 'clay');
   const [activo, setActivo]         = React.useState(canal?.activo ?? true);
   const [saving, setSaving]         = React.useState(false);
 
@@ -96,12 +138,29 @@ const FormCanal = ({canal, onSave, onCancel}) => {
       label: label.trim(),
       descripcion: descripcion.trim() || null,
       comision_default: pct,
+      tone,
       activo,
     };
-    const {error} = await sb.from('canales_venta').update(payload).eq('id', canal.id);
+    let error;
+    if (editando) {
+      ({error} = await sb.from('canales_venta').update(payload).eq('id', canal.id));
+    } else {
+      // Generar id único a partir del label
+      let baseId = slugifyCanal(label);
+      let id = baseId, n = 1;
+      while (true) {
+        const {data} = await sb.from('canales_venta').select('id').eq('id', id).maybeSingle();
+        if (!data) break;
+        id = baseId + '_' + (++n);
+      }
+      // orden: después del último
+      const {data: ord} = await sb.from('canales_venta').select('orden').order('orden',{ascending:false}).limit(1);
+      const orden = (ord?.[0]?.orden ?? 0) + 1;
+      ({error} = await sb.from('canales_venta').insert({...payload, id, orden}));
+    }
     setSaving(false);
     if (error) return notify('Error: '+error.message, 'err');
-    notify('Canal actualizado');
+    notify(editando ? 'Canal actualizado' : 'Canal creado');
     onSave();
   };
 
@@ -120,6 +179,21 @@ const FormCanal = ({canal, onSave, onCancel}) => {
         <div style={{fontSize:11,color:'var(--ink-3)',marginTop:5}}>El spa se queda con <strong>{(100 - (parseFloat(comisionDefault)||0)).toFixed(2).replace(/\.00$/,'')}%</strong> de las ventas en este canal.</div>
       </div>
       <div style={{marginBottom:14}}>
+        <label style={labelStyle}>Color de la tarjeta</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {TONES_DISPONIBLES.map(t => {
+            const sel = tone === t.id;
+            const color = ({clay:'var(--clay)',moss:'var(--moss)',blue:'var(--ink-blue)',rose:'#d4537e',ocean:'#378add',sand:'#c8a27a'})[t.id] || 'var(--ink-2)';
+            return (
+              <button key={t.id} type="button" onClick={()=>setTone(t.id)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',border:`1.5px solid ${sel?color:'var(--line-1)'}`,background:sel?'var(--paper-sunk)':'var(--paper-raised)',borderRadius:6,cursor:'pointer',fontSize:11.5,fontFamily:'inherit',fontWeight:sel?600:500,color:'var(--ink-1)'}}>
+                <span style={{width:10,height:10,borderRadius:999,background:color,display:'inline-block'}}/>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{marginBottom:14}}>
         <label style={labelStyle}>Descripción (opcional)</label>
         <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} rows={2} style={{...fieldStyle,resize:'vertical',minHeight:50}}/>
       </div>
@@ -129,7 +203,7 @@ const FormCanal = ({canal, onSave, onCancel}) => {
       </label>
       <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:22,paddingTop:16,borderTop:'1px solid var(--line-1)'}}>
         <Btn variant="ghost" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>
-        <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving}>{saving?'Guardando…':'Guardar cambios'}</Btn>
+        <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving}>{saving?'Guardando…':(editando?'Guardar cambios':'Crear canal')}</Btn>
       </div>
     </>
   );
@@ -168,6 +242,20 @@ const ServiciosComisionesFn = () => {
   const toggleActivoServicio = async (s) => {
     const {error} = await sb.from('servicios').update({activo: !s.activo}).eq('id', s.id);
     if (error) return notify('Error: '+error.message,'err');
+    cargar();
+  };
+
+  const toggleActivoCanal = async (c) => {
+    const {error} = await sb.from('canales_venta').update({activo: !c.activo}).eq('id', c.id);
+    if (error) return notify('Error: '+error.message,'err');
+    cargar();
+  };
+
+  const borrarCanal = async (c) => {
+    if (!confirmar(`¿Borrar el canal "${c.label}"?\n\nSi tiene ventas asociadas no se podrá borrar; archívalo.`)) return;
+    const {error} = await sb.from('canales_venta').delete().eq('id', c.id);
+    if (error) return notify('No se pudo borrar. Tiene ventas asociadas — archívalo en su lugar.','err');
+    notify('Canal borrado');
     cargar();
   };
 
@@ -233,8 +321,8 @@ const ServiciosComisionesFn = () => {
                       </div>
                       <div style={{fontSize:11,color:'var(--ink-3)',fontFamily:'var(--mono)',letterSpacing:.5}}>{s.codigo || '—'}</div>
                       <div style={{fontSize:13,fontWeight:600,color:'var(--ink-1)'}} className="num">
-                        {s.precio_base > 0 ? '$'+Number(s.precio_base).toLocaleString('es-MX') : <span style={{color:'var(--ink-3)',fontWeight:400}}>—</span>}
-                        {s.duracion_min > 0 && <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:500,marginTop:2}}>{s.duracion_min} min</div>}
+                        {s.precio_base > 0 ? '$'+Number(s.precio_base).toLocaleString('es-MX') : <span style={{color:'var(--clay)',fontWeight:500,fontStyle:'italic',fontSize:11.5}}>Libre</span>}
+                        <div style={{fontSize:10,color:s.duracion_min>0?'var(--ink-3)':'var(--clay)',fontWeight:500,marginTop:2,fontStyle:s.duracion_min>0?'normal':'italic'}}>{s.duracion_min>0 ? `${s.duracion_min} min` : 'Duración libre'}</div>
                       </div>
                       <div>
                         <button onClick={()=>toggleActivoServicio(s)} style={{background:'transparent',border:'none',cursor:'pointer',padding:0}}>
@@ -261,27 +349,37 @@ const ServiciosComisionesFn = () => {
                 </div>
               ) : (
                 <>
-                  <div style={{display:'grid',gridTemplateColumns:`repeat(${Math.min(canales.length,3)}, 1fr)`,gap:14,marginBottom:24}}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))',gap:12,marginBottom:22}}>
                     {canales.map(c=>{
                       const color = toneColor(c.tone);
                       const pct = Number(c.comision_default);
                       return (
-                        <div key={c.id} style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'22px 22px 18px',position:'relative',overflow:'hidden',opacity:c.activo?1:.55}}>
-                          <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:color}}/>
-                          <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:color,marginBottom:10}}>Canal · {c.label}</div>
-                          <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:12}}>
-                            <span style={{fontFamily:'var(--serif)',fontSize:56,fontWeight:500,color:'var(--ink-0)',letterSpacing:-1.5,lineHeight:.9}} className="num">{pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)}</span>
-                            <span style={{fontSize:22,color:'var(--ink-2)',fontWeight:500,fontFamily:'var(--serif)'}}>%</span>
-                            <span style={{fontSize:10.5,color:'var(--ink-3)',marginLeft:'auto',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>al terapeuta</span>
+                        <div key={c.id} style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:10,padding:'14px 14px 12px',position:'relative',overflow:'hidden',opacity:c.activo?1:.55}}>
+                          <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:color}}/>
+                          <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8,marginTop:2,marginBottom:6}}>
+                            <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.1}}>{c.label}</div>
+                            {!c.activo && <span style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',background:'var(--paper-sunk)',padding:'2px 6px',borderRadius:4}}>Archivado</span>}
                           </div>
-                          <div style={{fontSize:12,color:'var(--ink-2)',lineHeight:1.5,minHeight:48}}>{c.descripcion || <span style={{fontStyle:'italic',color:'var(--ink-3)'}}>Sin descripción</span>}</div>
-                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12,paddingTop:12,borderTop:'1px solid var(--line-1)'}}>
-                            <span style={{fontSize:11,color:'var(--ink-3)'}}>Spa se queda con <strong style={{color:'var(--ink-1)'}}>{(100-pct).toFixed(2).replace(/\.00$/,'')}%</strong></span>
-                            <Btn variant="ghost" size="sm" icon="edit" onClick={()=>setModal({tipo:'canal-editar',data:c})}>Editar</Btn>
+                          <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:8}}>
+                            <span style={{fontFamily:'var(--serif)',fontSize:32,fontWeight:500,color:'var(--ink-0)',letterSpacing:-.8,lineHeight:1}} className="num">{pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)}</span>
+                            <span style={{fontSize:15,color:'var(--ink-2)',fontWeight:500,fontFamily:'var(--serif)'}}>%</span>
+                            <span style={{fontSize:10,color:'var(--ink-3)',marginLeft:'auto',fontWeight:500}}>spa {(100-pct).toFixed(0)}%</span>
+                          </div>
+                          {c.descripcion && <div style={{fontSize:11,color:'var(--ink-3)',lineHeight:1.4,marginBottom:10,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{c.descripcion}</div>}
+                          <div style={{display:'flex',gap:4,alignItems:'center',paddingTop:8,borderTop:'1px solid var(--line-1)'}}>
+                            <button onClick={()=>setModal({tipo:'canal-editar',data:c})} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:'4px 6px',color:'var(--ink-2)',borderRadius:4,fontSize:11,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}><Icon name="edit" size={11}/>Editar</button>
+                            <div style={{flex:1}}/>
+                            <button onClick={()=>toggleActivoCanal(c)} title={c.activo?'Archivar':'Activar'} style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)',borderRadius:4,display:'flex',alignItems:'center'}}><Icon name={c.activo?'lock':'check'} size={13}/></button>
+                            <button onClick={()=>borrarCanal(c)} title="Borrar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)',borderRadius:4,display:'flex',alignItems:'center'}}><Icon name="trash" size={13}/></button>
                           </div>
                         </div>
                       );
                     })}
+                    {/* Tarjeta "Agregar canal" */}
+                    <button onClick={()=>setModal({tipo:'canal-nuevo'})} style={{background:'var(--paper-sunk)',border:'1.5px dashed var(--line-1)',borderRadius:10,padding:14,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'var(--ink-3)',fontFamily:'inherit',fontSize:12,fontWeight:500,minHeight:140}}>
+                      <Icon name="plus" size={18} stroke={1.8}/>
+                      Nuevo canal
+                    </button>
                   </div>
 
                   {/* Ejemplo de aplicación */}
@@ -334,6 +432,11 @@ const ServiciosComisionesFn = () => {
       {modal?.tipo==='servicio-editar' && (
         <Modal title="Editar servicio" onClose={()=>setModal(null)}>
           <FormServicio servicio={modal.data} onSave={()=>{setModal(null);cargar();}} onCancel={()=>setModal(null)}/>
+        </Modal>
+      )}
+      {modal?.tipo==='canal-nuevo' && (
+        <Modal title="Nuevo canal de venta" onClose={()=>setModal(null)}>
+          <FormCanal onSave={()=>{setModal(null);cargar();}} onCancel={()=>setModal(null)}/>
         </Modal>
       )}
       {modal?.tipo==='canal-editar' && (
