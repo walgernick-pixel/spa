@@ -100,7 +100,11 @@ const PVTurnoFn = () => {
     const pass = window.prompt('⚠️ REABRIR turno cerrado\n\nEsto permitirá agregar, editar o borrar servicios del turno nuevamente.\nSolo administradores deberían hacer esto.\n\nEscribe REABRIR (mayúsculas) para confirmar:');
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
-    const {error} = await sb.from('turnos').update({estado:'abierto', hora_fin:null, cerrado:null}).eq('id', turnoId);
+    const nuevaCuenta = (Number(turno.reaperturas)||0) + 1;
+    const {error} = await sb.from('turnos').update({
+      estado:'abierto', hora_fin:null, cerrado:null,
+      reaperturas: nuevaCuenta, reabierto_at: new Date().toISOString(),
+    }).eq('id', turnoId);
     if (error) return notify('Error: '+error.message,'err');
     notify('Turno reabierto');
     cargar();
