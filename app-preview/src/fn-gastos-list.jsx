@@ -158,6 +158,18 @@ const GastosListFn = ({onRowClick, onNew}) => {
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
+      <style>{`
+        .cf-show-narrow { display: none; }
+        @media (max-width: 900px) {
+          .cf-gasto-row {
+            grid-template-columns: 1fr auto 36px !important;
+            gap: 10px !important;
+            padding: 12px 14px !important;
+          }
+          .cf-gasto-row .cf-hide-narrow { display: none !important; }
+          .cf-show-narrow { display: inline !important; }
+        }
+      `}</style>
       {!window.__EMBEDDED__ && <Sidebar active="gastos"/>}
       <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
         <div style={{padding:'28px 36px 20px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
@@ -219,12 +231,12 @@ const GastosListFn = ({onRowClick, onNew}) => {
 
         {/* Header tabla */}
         <div style={{padding:'0 36px'}}>
-          <div style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,padding:'10px 18px',fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',borderBottom:'1px solid var(--line-1)'}}>
-            <div>Fecha</div>
+          <div className="cf-gasto-row" style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,padding:'10px 18px',fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',borderBottom:'1px solid var(--line-1)'}}>
+            <div className="cf-hide-narrow">Fecha</div>
             <div>Concepto / Nota</div>
-            <div>Proveedor</div>
-            <div>Categoría</div>
-            <div>Cuenta</div>
+            <div className="cf-hide-narrow">Proveedor</div>
+            <div className="cf-hide-narrow">Categoría</div>
+            <div className="cf-hide-narrow">Cuenta</div>
             <div style={{textAlign:'right'}}>Monto</div>
             <div/>
           </div>
@@ -283,18 +295,23 @@ const EmptyState = ({search, hayFiltros, onNew, onLimpiar}) => {
 const GastoRowFn = ({g, first, onClick}) => {
   const esMXN = g.moneda === 'MXN';
   return (
-    <div onClick={onClick} style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,alignItems:'center',padding:'12px 18px',borderTop:first?'none':'1px solid var(--line-1)',cursor:onClick?'pointer':'default',transition:'background .12s'}}
+    <div onClick={onClick} className="cf-gasto-row" style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,alignItems:'center',padding:'12px 18px',borderTop:first?'none':'1px solid var(--line-1)',cursor:onClick?'pointer':'default',transition:'background .12s'}}
       onMouseEnter={e=>onClick && (e.currentTarget.style.background='var(--paper-sunk)')}
       onMouseLeave={e=>onClick && (e.currentTarget.style.background='transparent')}
     >
-      <div className="num" style={{fontSize:12,color:'var(--ink-2)'}}>{formatFecha(g.fecha)}</div>
-      <div style={{minWidth:0}}>
+      <div className="num cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)'}}>{formatFecha(g.fecha)}</div>
+      <div className="cf-gr-concepto" style={{minWidth:0}}>
         <div style={{fontSize:13.5,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.concepto}</div>
-        {g.notas && <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.notas}</div>}
+        <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+          <span className="cf-show-narrow num">{formatFecha(g.fecha)} · </span>
+          {g.proveedor && <>{g.proveedor} · </>}
+          <span className="cf-show-narrow">{g.categoria} · {g.cuenta}</span>
+          {g.notas && <> · {g.notas}</>}
+        </div>
       </div>
-      <div style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.proveedor || <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>}</div>
-      <div><Chip tone={g.categoria_tone || 'neutral'}>{g.categoria}</Chip></div>
-      <div style={{fontSize:11.5,color:'var(--ink-2)'}}>
+      <div className="cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.proveedor || <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>}</div>
+      <div className="cf-hide-narrow"><Chip tone={g.categoria_tone || 'neutral'}>{g.categoria}</Chip></div>
+      <div className="cf-hide-narrow" style={{fontSize:11.5,color:'var(--ink-2)'}}>
         <div style={{fontWeight:600,color:'var(--ink-1)',display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
           {g.cuenta}
           {!esMXN && <span style={{fontSize:9,fontWeight:700,color:'var(--ink-3)',background:'var(--paper-sunk)',padding:'1px 4px',borderRadius:3,letterSpacing:.3}}>{g.moneda}</span>}
@@ -302,7 +319,7 @@ const GastoRowFn = ({g, first, onClick}) => {
         </div>
         <div style={{fontSize:10,color:'var(--ink-3)',marginTop:1}}>{g.cuenta_tipo}</div>
       </div>
-      <div style={{textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}}>
+      <div className="cf-gr-monto" style={{textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,minWidth:0}}>
         {!g.comprobante_url && <span title="Sin comprobante"><Icon name="receipt" size={12} color="var(--amber)" stroke={2}/></span>}
         <div>
           <Money amount={Number(g.monto)} currency={g.moneda} size={15} weight={600}/>
