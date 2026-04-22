@@ -286,8 +286,8 @@ const ArqueoFn = () => {
         </div>
       </div>
 
-      <div style={{flex:1,overflowY:'auto'}}>
-        <div style={{maxWidth:900,margin:'0 auto',padding:'24px 32px 60px'}}>
+      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',minHeight:0}}>
+        <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 100px'}}>
           {/* Info banner */}
           <div style={{padding:'14px 18px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10,display:'flex',gap:12,alignItems:'flex-start',fontSize:12.5,color:'#7a4e10',lineHeight:1.55,marginBottom:20}}>
             <Icon name="sparkles" size={14} stroke={1.8} style={{marginTop:2,flexShrink:0}}/>
@@ -336,7 +336,7 @@ const ArqueoFn = () => {
                         <span style={{fontSize:10.5,color:'var(--ink-3)'}}>{b.nVentas} {b.nVentas===1?'venta':'ventas'}</span>
                       </div>
 
-                      <div style={{padding:'18px 20px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+                      <div style={{padding:'18px 20px',display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',gap:20}}>
                         {/* Esperado (izq) */}
                         <div>
                           <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>Cálculo del sistema</div>

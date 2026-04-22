@@ -164,12 +164,22 @@ const ReciboPrintable = ({turno, ventas, porCuenta, turnoColabs, monedas, report
                 <div className="pr-colab-svcs">
                   {c.ejecutadas.length > 0 && (
                     <div>
-                      <b>Ejecutó:</b> {c.ejecutadas.map(v => `${v.servicio} ${v.canal?`(${v.canal})`:''} ${symOf(v.moneda)}${fmt(v.precio)}·${v.comision_pct}%`).join(' · ')}
+                      <b>Ejecutó:</b> {c.ejecutadas.map(v => {
+                        const sym = symOf(v.moneda);
+                        const comision = Number(v.comision_monto || 0);
+                        const propina = Number(v.propina || 0);
+                        const propinaTxt = propina > 0 ? ` + ${sym}${fmt2(propina)} propina` : '';
+                        return `${v.servicio} (${v.canal || '—'}) ${sym}${fmt(v.precio)} × ${v.comision_pct}% = ${sym}${fmt2(comision)}${propinaTxt}`;
+                      }).join(' · ')}
                     </div>
                   )}
                   {c.vendidas.length > 0 && (
                     <div style={{marginTop:'1pt'}}>
-                      <b>Vendió a otras:</b> {c.vendidas.map(v => `${v.servicio} → ${v.colaboradora_alias || v.colaboradora_nombre} ${symOf(v.moneda)}${fmt(v.precio)}·${v.comision_venta_pct}%`).join(' · ')}
+                      <b>Vendió a otras:</b> {c.vendidas.map(v => {
+                        const sym = symOf(v.moneda);
+                        const cv = Number(v.comision_venta_monto || 0);
+                        return `${v.servicio} → ${v.colaboradora_alias || v.colaboradora_nombre} (${v.canal || '—'}) ${sym}${fmt(v.precio)} × ${v.comision_venta_pct}% = ${sym}${fmt2(cv)}`;
+                      }).join(' · ')}
                     </div>
                   )}
                 </div>
