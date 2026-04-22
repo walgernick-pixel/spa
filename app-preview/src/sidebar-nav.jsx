@@ -3,10 +3,13 @@
 // Reemplaza a sidebar.jsx en las pantallas navegables.
 // ──────────────────────────────────────────
 const SidebarNav = ({active, user={name:'Carmen Jiménez',role:'Encargada',tone:'clay'}}) => {
+  // Dashboard solo visible con permiso ver_dashboard (gerencia)
   const items=[
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},
     {id:'gastos',    label:'Gastos',               icon:'wallet',  path:'gastos'},
-    {id:'dash',      label:'Dashboard',            icon:'chart',   path:'dashboard'},
+    ...(window.can && window.can('ver_dashboard') ? [
+      {id:'dash',    label:'Dashboard',            icon:'chart',   path:'dashboard'},
+    ] : []),
   ];
   const cfg=[
     {id:'cuentas',   label:'Cuentas y monedas',    icon:'coins',    path:'config/cuentas'},
