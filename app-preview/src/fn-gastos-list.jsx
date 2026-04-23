@@ -176,6 +176,19 @@ const GastosListFn = ({onRowClick, onNew}) => {
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
       <style>{`
         .cf-show-narrow { display: none; }
+        /* Tablet (900-1199px): oculta proveedor, categoría */
+        @media (max-width: 1199px) {
+          .cf-gasto-row {
+            grid-template-columns: 82px 1fr 120px 140px 36px !important;
+            gap: 12px !important;
+          }
+          .cf-gasto-row .cf-hide-md { display: none !important; }
+          .cf-gastos-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+          .cf-gastos-kpis .cf-kpi-valor { font-size: 22px !important; }
+          .cf-gastos-filtros { gap: 8px !important; }
+          .cf-gastos-filtros .cf-filter-search { flex: 1 1 100% !important; max-width: none !important; }
+        }
+        /* Mobile (<900px): condensa todo */
         @media (max-width: 900px) {
           .cf-gasto-row {
             grid-template-columns: 1fr auto 36px !important;
@@ -184,6 +197,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
           }
           .cf-gasto-row .cf-hide-narrow { display: none !important; }
           .cf-show-narrow { display: inline !important; }
+          .cf-gastos-kpis { grid-template-columns: 1fr !important; }
         }
       `}</style>
       {!window.__EMBEDDED__ && <Sidebar active="gastos"/>}
@@ -201,7 +215,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
 
         {/* Métricas del mes actual */}
         <div style={{padding:'0 36px 18px'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
+          <div className="cf-gastos-kpis" style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
             <MetricCell
               lbl={`${mesLabel(new Date())}`}
               value={metricas.loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.totalMes} size={28}/>}
@@ -229,8 +243,8 @@ const GastosListFn = ({onRowClick, onNew}) => {
         </div>
 
         {/* Filtros */}
-        <div style={{padding:'0 36px 14px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
-          <div style={{position:'relative',flex:'0 1 320px'}}>
+        <div className="cf-gastos-filtros" style={{padding:'0 36px 14px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          <div className="cf-filter-search" style={{position:'relative',flex:'0 1 320px'}}>
             <Icon name="search" size={14} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)'}}/>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar concepto, proveedor, nota..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
           </div>
@@ -239,9 +253,8 @@ const GastosListFn = ({onRowClick, onNew}) => {
           <FilterSelect label="Categoría" value={catFiltro} onChange={setCatFiltro} options={[{value:'todas',label:'Todas'},...cats.map(c=>({value:c.id,label:c.label}))]}/>
           <FilterSelect label="Cuenta" value={cuentaFiltro} onChange={setCuentaF} options={[{value:'todas',label:'Todas'},...cuentas.map(c=>({value:c.id,label:c.label}))]}/>
 
-          <div style={{flex:1}}/>
           {hayFiltros && (
-            <button onClick={limpiarFiltros} style={{background:'transparent',border:'none',fontSize:12,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,textDecoration:'underline',textUnderlineOffset:3}}>Limpiar filtros</button>
+            <button onClick={limpiarFiltros} style={{marginLeft:'auto',background:'transparent',border:'none',fontSize:12,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,textDecoration:'underline',textUnderlineOffset:3}}>Limpiar filtros</button>
           )}
         </div>
 
@@ -250,8 +263,8 @@ const GastosListFn = ({onRowClick, onNew}) => {
           <div className="cf-gasto-row" style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,padding:'10px 18px',fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',borderBottom:'1px solid var(--line-1)'}}>
             <div className="cf-hide-narrow">Fecha</div>
             <div>Concepto / Nota</div>
-            <div className="cf-hide-narrow">Proveedor</div>
-            <div className="cf-hide-narrow">Categoría</div>
+            <div className="cf-hide-narrow cf-hide-md">Proveedor</div>
+            <div className="cf-hide-narrow cf-hide-md">Categoría</div>
             <div className="cf-hide-narrow">Cuenta</div>
             <div style={{textAlign:'right'}}>Monto</div>
             <div/>
@@ -328,8 +341,8 @@ const GastoRowFn = ({g, first, onClick}) => {
           {g.notas && <> · {g.notas}</>}
         </div>
       </div>
-      <div className="cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.proveedor || <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>}</div>
-      <div className="cf-hide-narrow"><Chip tone={g.categoria_tone || 'neutral'}>{g.categoria}</Chip></div>
+      <div className="cf-hide-narrow cf-hide-md" style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.proveedor || <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>}</div>
+      <div className="cf-hide-narrow cf-hide-md"><Chip tone={g.categoria_tone || 'neutral'}>{g.categoria}</Chip></div>
       <div className="cf-hide-narrow" style={{fontSize:11.5,color:'var(--ink-2)',minWidth:0}}>
         {g.n_pagos > 1 && g.splits ? (
           <>
