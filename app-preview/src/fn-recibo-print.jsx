@@ -109,7 +109,7 @@ const ReciboPrintable = ({turno, ventas, porCuenta, turnoColabs, monedas, report
             <tbody>
               <tr><td>Ventas brutas</td><td className="num">${fmt2(totales.ventas)}</td></tr>
               <tr><td>Comisiones pagadas (terapeutas)</td><td className="num">− ${fmt2(totales.comisiones)}</td></tr>
-              {totales.comVenta > 0 && <tr><td>Comisiones por venta (vendedoras)</td><td className="num">− ${fmt2(totales.comVenta)}</td></tr>}
+              {totales.comVenta > 0 && <tr><td>Comisiones por venta</td><td className="num">− ${fmt2(totales.comVenta)}</td></tr>}
               <tr><td>Propinas (100% al terapeuta)</td><td className="num">− ${fmt2(totales.propinas)}</td></tr>
               <tr className="total-row"><td>Neto al spa</td><td className="num">${fmt2(totales.neto)}</td></tr>
             </tbody>
@@ -149,10 +149,10 @@ const ReciboPrintable = ({turno, ventas, porCuenta, turnoColabs, monedas, report
 
         {/* Por colaboradora (una fila cada una) */}
         <div className="pr-section">
-          <h2>Desglose por colaboradora y recibo de comisión</h2>
+          <h2>Desglose por colaborador y recibo de comisión</h2>
           <div style={{border:'0.5pt solid #ccc',borderRadius:'1pt'}}>
             <div style={{display:'grid',gridTemplateColumns:'1.2fr 2fr 0.8fr 0.8fr',gap:'6pt',padding:'2pt 4pt',background:'#f0f0f0',fontSize:'6.5pt',fontWeight:'bold',textTransform:'uppercase',letterSpacing:'0.3pt'}}>
-              <div>Colaboradora</div><div>Servicios</div><div style={{textAlign:'right'}}>Recibió</div><div style={{textAlign:'center'}}>Firma</div>
+              <div>Nombre</div><div>Servicios</div><div style={{textAlign:'right'}}>Recibió</div><div style={{textAlign:'center'}}>Firma</div>
             </div>
             {colabsInfo.map(c => (
               <div key={c.id} className="pr-colab-row" style={{padding:'3pt 4pt'}}>

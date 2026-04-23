@@ -40,7 +40,7 @@ const FormColab = ({colab, onSave, onCancel}) => {
     else          ({error} = await sb.from('colaboradoras').insert(payload));
     setSaving(false);
     if (error) return notify('Error: '+error.message, 'err');
-    notify(editando ? 'Colaboradora actualizada' : 'Colaboradora creada');
+    notify(editando ? 'Colaborador actualizado' : 'Colaborador creado');
     onSave();
   };
 
@@ -95,7 +95,7 @@ const FormColab = ({colab, onSave, onCancel}) => {
       </label>
       <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:22,paddingTop:16,borderTop:'1px solid var(--line-1)'}}>
         <Btn variant="ghost" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>
-        <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving}>{saving?'Guardando…':(editando?'Guardar cambios':'Crear colaboradora')}</Btn>
+        <Btn variant="clay" size="md" icon="check" onClick={guardar} disabled={saving}>{saving?'Guardando…':(editando?'Guardar cambios':'Crear colaborador')}</Btn>
       </div>
     </>
   );
@@ -122,7 +122,7 @@ const ConfigColabFn = () => {
     if (!confirmar(`¿Borrar a "${c.nombre}"?\n\nSi tiene ventas asociadas no se podrá borrar; archívala.`)) return;
     const {error} = await sb.from('colaboradoras').delete().eq('id', c.id);
     if (error) return notify('No se pudo borrar. Tiene ventas asociadas — archívala en su lugar.','err');
-    notify('Colaboradora borrada');
+    notify('Colaborador borrado');
     cargar();
   };
 
@@ -167,20 +167,20 @@ const ConfigColabFn = () => {
         <div style={{padding:'28px 36px 18px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
           <div>
             <div style={{fontSize:11,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Configuración</div>
-            <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Colaboradoras</div>
-            <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>{activas.length} activas · {archivadas.length} archivadas</div>
+            <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Colaboradores</div>
+            <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>{activas.length} activos · {archivadas.length} archivados</div>
           </div>
-          <Btn variant="clay" size="md" icon="plus" onClick={()=>setModal({tipo:'nueva'})}>Nueva colaboradora</Btn>
+          <Btn variant="clay" size="md" icon="plus" onClick={()=>setModal({tipo:'nueva'})}>Agregar colaborador</Btn>
         </div>
 
         <div style={{padding:'4px 36px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <div style={{display:'flex',gap:2,padding:2,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:8}}>
-            <button onClick={()=>setFiltro('activa')} style={{padding:'6px 14px',fontSize:12,fontWeight:filtro==='activa'?600:500,border:'none',borderRadius:6,background:filtro==='activa'?'var(--ink-0)':'transparent',color:filtro==='activa'?'#faf7f1':'var(--ink-2)',cursor:'pointer',fontFamily:'inherit'}}>Activas · {activas.length}</button>
-            <button onClick={()=>setFiltro('archivada')} style={{padding:'6px 14px',fontSize:12,fontWeight:filtro==='archivada'?600:500,border:'none',borderRadius:6,background:filtro==='archivada'?'var(--ink-0)':'transparent',color:filtro==='archivada'?'#faf7f1':'var(--ink-2)',cursor:'pointer',fontFamily:'inherit'}}>Archivadas · {archivadas.length}</button>
+            <button onClick={()=>setFiltro('activa')} style={{padding:'6px 14px',fontSize:12,fontWeight:filtro==='activa'?600:500,border:'none',borderRadius:6,background:filtro==='activa'?'var(--ink-0)':'transparent',color:filtro==='activa'?'#faf7f1':'var(--ink-2)',cursor:'pointer',fontFamily:'inherit'}}>Activos · {activas.length}</button>
+            <button onClick={()=>setFiltro('archivada')} style={{padding:'6px 14px',fontSize:12,fontWeight:filtro==='archivada'?600:500,border:'none',borderRadius:6,background:filtro==='archivada'?'var(--ink-0)':'transparent',color:filtro==='archivada'?'#faf7f1':'var(--ink-2)',cursor:'pointer',fontFamily:'inherit'}}>Archivados · {archivadas.length}</button>
           </div>
           <div style={{flex:1,display:'flex',alignItems:'center',gap:8,padding:'7px 12px',border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)'}}>
             <Icon name="search" size={14} color="var(--ink-3)"/>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar colaboradora…" style={{flex:1,border:'none',outline:'none',fontSize:13,background:'transparent',fontFamily:'inherit'}}/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…" style={{flex:1,border:'none',outline:'none',fontSize:13,background:'transparent',fontFamily:'inherit'}}/>
           </div>
         </div>
 
@@ -191,9 +191,9 @@ const ConfigColabFn = () => {
             <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center',marginTop:10}}>
               {colabs.length===0 ? (
                 <>
-                  <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>Aún no hay colaboradoras</div>
+                  <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>Aún no hay colaboradores</div>
                   <div style={{fontSize:13,color:'var(--ink-2)',marginBottom:18}}>Da de alta a tu equipo para empezar a registrar ventas en el PV.</div>
-                  <Btn variant="clay" size="md" icon="plus" onClick={()=>setModal({tipo:'nueva'})}>Crear primera colaboradora</Btn>
+                  <Btn variant="clay" size="md" icon="plus" onClick={()=>setModal({tipo:'nueva'})}>Agregar el primero</Btn>
                 </>
               ) : (
                 <div style={{fontSize:13,color:'var(--ink-2)'}}>No hay coincidencias para los filtros actuales.</div>
@@ -204,7 +204,7 @@ const ConfigColabFn = () => {
           {!loading && filtrados.length > 0 && (
             <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
               <div style={{display:'grid',gridTemplateColumns:'1.5fr 1.2fr 130px 100px 90px',gap:16,padding:'10px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)'}}>
-                {['Colaboradora','Especialidad · contacto','Desde','Estado',''].map(h=>(
+                {['Nombre','Especialidad · contacto','Desde','Estado',''].map(h=>(
                   <div key={h} style={{fontSize:10,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)'}}>{h}</div>
                 ))}
               </div>
@@ -242,7 +242,7 @@ const ConfigColabFn = () => {
       </div>
 
       {modal?.tipo==='nueva' && (
-        <Modal title="Nueva colaboradora" onClose={()=>setModal(null)} wide>
+        <Modal title="Agregar colaborador" onClose={()=>setModal(null)} wide>
           <FormColab onSave={()=>{setModal(null);cargar();}} onCancel={()=>setModal(null)}/>
         </Modal>
       )}

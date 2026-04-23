@@ -229,14 +229,14 @@ const ArqueoFn = () => {
     const pendientes = [...idsEnTurno].filter(id => !colabPagada[id]);
     if (pendientes.length > 0) {
       return notify(
-        `No puedes cerrar el turno: ${pendientes.length} ${pendientes.length===1?'colaboradora':'colaboradoras'} con pago pendiente. Márcalas como pagadas primero (la firma puede quedar pendiente).`,
+        `No puedes cerrar el turno: ${pendientes.length} ${pendientes.length===1?'persona':'personas'} con pago pendiente. Márcalos como pagadas primero (la firma puede quedar pendiente).`,
         'err'
       );
     }
     // 3) Avisar si hay firmas pendientes pero permitir cerrar
     const sinFirma = turnoColabs.filter(tc => tc.comision_pagada_at && !tc.firma_data_url);
     let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nDespués de cerrar, este turno DESAPARECE de tu pantalla y no podrás volver a imprimir el recibo (solo un administrador podrá).\n\n⚠️ Asegúrate de haber imprimido el recibo antes de continuar.';
-    if (sinFirma.length > 0) msg += `\n\n(Hay ${sinFirma.length} ${sinFirma.length===1?'colaboradora':'colaboradoras'} pagada${sinFirma.length===1?'':'s'} sin firmar — podrán firmar después)`;
+    if (sinFirma.length > 0) msg += `\n\n(Hay ${sinFirma.length} ${sinFirma.length===1?'persona':'personas'} pagada${sinFirma.length===1?'':'s'} sin firmar — podrá firmar después)`;
     if (!confirmar(msg)) return;
     setCerrando(true);
     // Cancelar cualquier autosave pendiente y guardar sincrónicamente

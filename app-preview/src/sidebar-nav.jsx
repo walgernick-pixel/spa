@@ -27,7 +27,7 @@ const SidebarNav = ({active}) => {
     {id:'cuentas',   label:'Cuentas y monedas',    icon:'coins',    path:'config/cuentas'},
     {id:'conceptos', label:'Catálogo de gastos',   icon:'wallet',   path:'config/catalogo'},
     {id:'servicios', label:'Servicios y comisiones',icon:'sparkles',path:'config/servicios'},
-    {id:'colab',     label:'Colaboradoras',        icon:'users',    path:'config/colaboradoras'},
+    {id:'colab',     label:'Colaboradores',        icon:'users',    path:'config/colaboradoras'},
     {id:'perm',      label:'Perfiles y permisos',  icon:'shield',   path:'config/perfiles'},
   ];
   return (

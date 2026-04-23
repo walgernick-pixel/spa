@@ -458,7 +458,7 @@ const DashboardFn = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
 
     // Hoja 2: Ventas detalle
-    const ventasAoA = [['Fecha','Servicio','Colaboradora','Canal','Cuenta','Precio','Moneda','% Com','Comisión','Propina','Vendedora','% Venta','Com. Venta','Monto MXN eq']];
+    const ventasAoA = [['Fecha','Servicio','Ejecutó','Canal','Cuenta','Precio','Moneda','% Com','Comisión','Propina','Vendió','% Venta','Com. Venta','Monto MXN eq']];
     data.ventas.forEach(v => {
       ventasAoA.push([
         v.fecha, v.servicio, v.colaboradora_nombre || '', v.canal || '', v.cuenta || '',
@@ -488,11 +488,11 @@ const DashboardFn = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(flujoAoA), 'Flujo de caja');
 
     // Hoja 5: Top colaboradoras
-    const colabsAoA = [['Colaboradora','Alias','# Servicios','Ventas MXN','Comisión MXN','Propinas MXN','Ventas a otras']];
+    const colabsAoA = [['Nombre','Alias','# Servicios','Ventas MXN','Comisión MXN','Propinas MXN','Ventas a otros']];
     derivado.colabsOrd.forEach(c => {
       colabsAoA.push([c.nombre, c.alias || '', c.n, Math.round(c.ventas), Math.round(c.comision), Math.round(c.propina), c.ventasHechas || 0]);
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(colabsAoA), 'Colaboradoras');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(colabsAoA), 'Equipo');
 
     // Hoja 6: Top servicios
     const svcAoA = [['Servicio','Veces','Ticket promedio','Total MXN']];
