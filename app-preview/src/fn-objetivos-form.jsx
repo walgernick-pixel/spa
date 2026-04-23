@@ -119,30 +119,50 @@ const FormObjetivo = ({obj, tipoForzado, periodoForzado, fechaForzada, onSave, o
 
   return (
     <div style={{padding:'10px 0'}}>
-      {/* Tipo + periodo */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 130px 150px',gap:10,marginBottom:14}}>
-        <div>
-          <label style={labelStyle}>Tipo de objetivo</label>
-          <select value={tipo} onChange={e=>setTipo(e.target.value)} style={fieldStyle} disabled={editando || !!tipoForzado}>
-            <option value="venta_spa">Venta total del spa</option>
-            <option value="ticket_spa">Ticket promedio del spa</option>
-            <option value="bono_individual">Bono individual (terapeutas)</option>
-            <option value="bono_encargada">Bono encargada (% sobre turnos que abrió)</option>
-          </select>
+      {/* Breadcrumb cuando el tipo viene forzado desde un slot */}
+      {(tipoForzado || periodoForzado) && (
+        <div style={{padding:'10px 14px',background:'var(--paper-sunk)',border:'1px solid var(--line-2)',borderRadius:8,marginBottom:14,fontSize:12,color:'var(--ink-2)'}}>
+          Configurando <strong style={{color:'var(--ink-0)'}}>
+            {tipo === 'venta_spa' && 'Venta total del spa'}
+            {tipo === 'ticket_spa' && 'Ticket promedio del spa'}
+            {tipo === 'bono_individual' && 'Bono individual'}
+            {tipo === 'bono_encargada' && 'Bono encargada'}
+          </strong> · <span style={{textTransform:'capitalize'}}>{labelPeriodoObj(periodo, periodoFecha)}</span>
         </div>
-        <div>
-          <label style={labelStyle}>Periodo</label>
-          <select value={periodo} onChange={e=>setPer(e.target.value)} style={fieldStyle} disabled={editando || !!periodoForzado}>
-            <option value="mes">Mensual</option>
-            <option value="trimestre">Trimestral</option>
-            <option value="anio">Anual</option>
-          </select>
+      )}
+
+      {/* Selectors: solo si NO viene forzado (creación libre) */}
+      {!(tipoForzado && periodoForzado && fechaForzada) && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 130px 150px',gap:10,marginBottom:14}}>
+          {!tipoForzado && (
+            <div>
+              <label style={labelStyle}>Tipo de objetivo</label>
+              <select value={tipo} onChange={e=>setTipo(e.target.value)} style={fieldStyle} disabled={editando}>
+                <option value="venta_spa">Venta total del spa</option>
+                <option value="ticket_spa">Ticket promedio del spa</option>
+                <option value="bono_individual">Bono individual (terapeutas)</option>
+                <option value="bono_encargada">Bono encargada (% sobre turnos que abrió)</option>
+              </select>
+            </div>
+          )}
+          {!periodoForzado && (
+            <div>
+              <label style={labelStyle}>Periodo</label>
+              <select value={periodo} onChange={e=>setPer(e.target.value)} style={fieldStyle} disabled={editando}>
+                <option value="mes">Mensual</option>
+                <option value="trimestre">Trimestral</option>
+                <option value="anio">Anual</option>
+              </select>
+            </div>
+          )}
+          {!fechaForzada && (
+            <div>
+              <label style={labelStyle}>Inicio del periodo</label>
+              <input type="date" value={periodoFecha} onChange={e=>setPF(e.target.value)} style={fieldStyle} disabled={editando}/>
+            </div>
+          )}
         </div>
-        <div>
-          <label style={labelStyle}>Inicio del periodo</label>
-          <input type="date" value={periodoFecha} onChange={e=>setPF(e.target.value)} style={fieldStyle} disabled={editando || !!fechaForzada}/>
-        </div>
-      </div>
+      )}
 
       {/* venta_spa */}
       {tipo === 'venta_spa' && (
@@ -327,10 +347,10 @@ const FormObjetivo = ({obj, tipoForzado, periodoForzado, fechaForzada, onSave, o
         <label style={labelStyle}>Descripción (opcional)</label>
         <textarea value={descripcion} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="Notas internas sobre este objetivo" style={{...fieldStyle,resize:'vertical',minHeight:50}}/>
       </div>
-      <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',marginBottom:6}}>
-        <input type="checkbox" checked={activo} onChange={e=>setAct(e.target.checked)}/>
-        <span style={{fontSize:13,color:'var(--ink-1)'}}>Activo (se calcula y muestra en dashboard)</span>
-      </label>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+        <Toggle checked={activo} onChange={setAct}/>
+        <span style={{fontSize:13,color:'var(--ink-1)'}}>{activo ? 'Activo' : 'Inactivo'} — se calcula y muestra en la pantalla</span>
+      </div>
 
       <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:18,paddingTop:14,borderTop:'1px solid var(--line-1)'}}>
         <Btn variant="ghost" size="md" onClick={onCancel} disabled={saving}>Cancelar</Btn>

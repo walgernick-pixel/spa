@@ -191,10 +191,10 @@ const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasY
           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:1}}>{tipoInfo.desc}</div>
         </div>
         {configurado && (
-          <label style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',fontSize:11,color:'var(--ink-2)'}} title={activo?'Desactivar':'Activar'}>
-            <input type="checkbox" checked={activo} onChange={onToggleActivo}/>
+          <div style={{display:'flex',alignItems:'center',gap:7,fontSize:11,color: activo ? 'var(--moss)' : 'var(--ink-3)',fontWeight:600}} title={activo?'Desactivar':'Activar'}>
+            <Toggle checked={activo} onChange={onToggleActivo} size="sm"/>
             <span>{activo?'Activo':'Inactivo'}</span>
-          </label>
+          </div>
         )}
         <button onClick={onConfigurar} title="Configurar" style={{background:'transparent',border:'none',cursor:'pointer',padding:6,color:'var(--ink-2)',borderRadius:6,display:'flex',alignItems:'center'}}>
           <Icon name="edit" size={14}/>

@@ -240,3 +240,43 @@ Object.assign(window, {
   restarMeses, periodoYoY,
   calcVentaSpa, calcTicketSpa, calcBonoIndividual, calcBonoEncargada, calcBonoMonto,
 });
+
+// ─── Toggle switch reutilizable (left-right slider) ───
+const Toggle = ({checked, onChange, color = 'var(--moss)', size = 'md', disabled = false}) => {
+  const W = size === 'sm' ? 30 : 38;
+  const H = size === 'sm' ? 17 : 22;
+  const K = size === 'sm' ? 13 : 18;
+  return (
+    <span
+      role="switch"
+      aria-checked={checked}
+      tabIndex={disabled ? -1 : 0}
+      onClick={(e) => { if (disabled) return; e.stopPropagation(); onChange(!checked); }}
+      onKeyDown={(e) => { if (disabled) return; if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onChange(!checked); }}}
+      style={{
+        display: 'inline-block',
+        width: W, height: H,
+        borderRadius: H / 2,
+        background: checked ? color : '#c9c3b8',
+        position: 'relative',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'background .18s',
+        opacity: disabled ? .5 : 1,
+        flexShrink: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute',
+        top: (H - K) / 2,
+        left: checked ? (W - K - 2) : 2,
+        width: K, height: K,
+        borderRadius: '50%',
+        background: '#fff',
+        boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+        transition: 'left .18s',
+      }}/>
+    </span>
+  );
+};
+
+Object.assign(window, { Toggle });
