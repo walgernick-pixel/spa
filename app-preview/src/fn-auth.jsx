@@ -40,6 +40,11 @@ const PERMISOS = {
 // Cuando ya todos tengan login, esto se puede poner en false por default
 const ANON_COMO_ADMIN = true; // TODO: cambiar a false cuando todos los usuarios tengan cuenta
 
+// Dominio interno — las encargadas no tienen correo real. Escriben "lupita"
+// y la app traduce a "lupita@xcalacoco.local" antes de llamar a Supabase Auth.
+const DOMINIO_INTERNO = 'xcalacoco.local';
+const usernameToEmail = (u) => `${String(u||'').trim().toLowerCase()}@${DOMINIO_INTERNO}`;
+
 // ─── Estado global de auth ───
 // Se expone en window.__auth = { session, perfil, loading, listeners: [] }
 window.__auth = window.__auth || {
@@ -126,7 +131,7 @@ const logout = async () => {
 
 // ─── Login Screen Funcional ───
 const LoginFn = () => {
-  const [email, setEmail]       = React.useState('');
+  const [usuario, setUsuario]   = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading]   = React.useState(false);
   const [error, setError]       = React.useState('');
@@ -134,11 +139,12 @@ const LoginFn = () => {
   const submit = async (e) => {
     e?.preventDefault?.();
     setError('');
-    if (!email.trim() || !password) return setError('Faltan datos');
+    if (!usuario.trim() || !password) return setError('Faltan datos');
     setLoading(true);
-    const {error} = await sb.auth.signInWithPassword({ email: email.trim(), password });
+    const email = usernameToEmail(usuario);
+    const {error} = await sb.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) return setError(error.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos' : error.message);
+    if (error) return setError(error.message === 'Invalid login credentials' ? 'Usuario o contraseña incorrectos' : error.message);
     notify('Sesión iniciada');
     navigate('turnos');
   };
@@ -159,10 +165,11 @@ const LoginFn = () => {
 
         <form onSubmit={submit}>
           <div style={{marginBottom:14}}>
-            <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6}}>Email</label>
+            <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6}}>Usuario</label>
             <input
-              type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email"
-              placeholder="tu@email.com"
+              type="text" autoFocus value={usuario} onChange={e=>setUsuario(e.target.value)} autoComplete="username"
+              placeholder="lupita"
+              autoCapitalize="off" autoCorrect="off" spellCheck={false}
               style={{width:'100%',padding:'11px 14px',fontSize:14,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}
             />
           </div>
@@ -187,7 +194,7 @@ const LoginFn = () => {
         </form>
 
         <div style={{marginTop:20,padding:'12px 14px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:8,fontSize:11.5,color:'#7a4e10',lineHeight:1.5}}>
-          <strong>Primera vez?</strong> Pide a tu administrador que te dé de alta. Los usuarios se crean desde Supabase o desde el módulo de gestión.
+          <strong>¿Primera vez?</strong> Pide al administrador que te dé de alta desde <em>Configuración → Perfiles y permisos</em>.
         </div>
       </div>
     </div>
@@ -200,4 +207,4 @@ if (typeof initAuth === 'function' && !window.__auth_inited) {
   initAuth();
 }
 
-Object.assign(window, { Login: LoginFn, useAuth, initAuth, canReal, logout, PERMISOS });
+Object.assign(window, { Login: LoginFn, useAuth, initAuth, canReal, logout, PERMISOS, DOMINIO_INTERNO, usernameToEmail });
