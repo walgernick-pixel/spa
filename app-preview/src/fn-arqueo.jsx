@@ -467,10 +467,10 @@ const ArqueoFn = () => {
               </div>
               <Btn variant="secondary" size="sm" icon="receipt" onClick={imprimirRecibo}>Imprimir recibo</Btn>
               <Btn variant="ghost" size="sm" onClick={reabrirTurno}>Reabrir turno</Btn>
-              {window.can && window.can('eliminar_arqueo') && (
+              {window.can && window.can('arqueo_eliminar') && (
                 <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarArqueo} style={{color:'#b73f5e'}}>Borrar arqueo</Btn>
               )}
-              {window.can && window.can('eliminar_turno') && (
+              {window.can && window.can('turnos_eliminar') && (
                 <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTurnoCompleto} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
               )}
             </div>

@@ -15,10 +15,10 @@ const SidebarNav = ({active}) => {
   const items=[
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},
     {id:'gastos',    label:'Gastos',               icon:'wallet',  path:'gastos'},
-    ...(window.can && window.can('ver_dashboard') ? [
+    ...(window.can && window.can('dashboard_ver') ? [
       {id:'dash',       label:'Dashboard',         icon:'chart',    path:'dashboard'},
     ] : []),
-    ...(window.can && window.can('ver_objetivos') ? [
+    ...(window.can && window.can('objetivos_ver') ? [
       {id:'objetivos',  label:'Objetivos',         icon:'sparkles', path:'objetivos'},
     ] : []),
   ];

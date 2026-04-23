@@ -539,7 +539,7 @@ const DashboardFn = () => {
     };
   }, [derivado, dataPrev]);
 
-  if (!window.can || !window.can('ver_dashboard')) {
+  if (!window.can || !window.can('dashboard_ver')) {
     return (
       <div style={{padding:60,textAlign:'center'}}>
         <div style={{fontFamily:'var(--serif)',fontSize:22,color:'var(--ink-1)',marginBottom:10}}>Sin acceso</div>
