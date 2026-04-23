@@ -17,6 +17,7 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   const [proveedor, setProveedor] = React.useState('');
   const [cuentaId, setCuenta]     = React.useState('');
   const [monto, setMonto]         = React.useState('');
+  const [esFacturable, setEF]     = React.useState(false);  // fiscal: si tiene factura
   const [ivaTasaId, setIvaTasa]   = React.useState('');  // id de iva_tasas, o 'custom', o ''
   const [ivaCustom, setIvaCustom] = React.useState('');  // si eligió custom, % escrito
   const [descripcion, setDesc]    = React.useState('');
@@ -81,6 +82,7 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       setMonto(String(data.monto));
       setDesc(data.descripcion || '');
       setNotas(data.notas || '');
+      setEF(data.es_facturable ?? false);
       // IVA
       if (data.iva_pct !== null && data.iva_pct !== undefined) {
         const match = catalogos.ivaTasas.find(t => Number(t.porcentaje) === Number(data.iva_pct));
@@ -196,7 +198,8 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
         ? catalogos.cuentas.find(c=>c.id===splits[0].cuentaId)?.moneda || cuenta.moneda
         : cuenta.moneda,
       tc_momento: tc,
-      iva_pct: ivaPct > 0 ? ivaPct : null,
+      es_facturable: esFacturable,
+      iva_pct: (esFacturable && ivaPct > 0) ? ivaPct : null,
       notas: notas.trim() || null,
       ...(comprobante_url ? {comprobante_url} : {}),
     };
@@ -365,7 +368,23 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                 )}
               </div>
 
-              {/* IVA opcional */}
+              {/* Facturable toggle */}
+              <div style={{marginBottom:esFacturable?10:18,padding:'12px 14px',background:esFacturable?'var(--sand-100)':'var(--paper-sunk)',border:'1px solid '+(esFacturable?'#ecd49a':'var(--line-2)'),borderRadius:10}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  {typeof Toggle !== 'undefined' ? (
+                    <Toggle checked={esFacturable} onChange={(v)=>{setEF(v); if(!v){setIvaTasa(''); setIvaCustom('');}}} size="sm"/>
+                  ) : (
+                    <input type="checkbox" checked={esFacturable} onChange={e=>{setEF(e.target.checked); if(!e.target.checked){setIvaTasa(''); setIvaCustom('');}}}/>
+                  )}
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)'}}>{esFacturable ? 'Gasto facturable' : 'Gasto no facturable'}</div>
+                    <div style={{fontSize:11,color:'var(--ink-3)',marginTop:1}}>{esFacturable ? 'Captura el IVA — cuenta como IVA acreditable y deducible del ISR' : 'Sin factura · no aplica IVA acreditable'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* IVA — solo cuando es facturable */}
+              {esFacturable && (
               <div style={{marginBottom:18,padding:'14px 16px',background:'var(--paper-sunk)',border:'1px solid var(--line-2)',borderRadius:10}}>
                 <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:ivaPct>0?12:0,flexWrap:'wrap'}}>
                   <div style={{fontSize:11,fontWeight:600,color:'var(--ink-2)',letterSpacing:.2,textTransform:'uppercase'}}>IVA</div>
@@ -399,6 +418,7 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Split de pagos */}
               <div style={{marginBottom:18,padding:'14px 16px',background:showSplit?'var(--sand-100)':'var(--paper-sunk)',border:'1px solid '+(showSplit?'#ecd49a':'var(--line-2)'),borderRadius:10}}>
