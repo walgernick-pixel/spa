@@ -165,6 +165,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
     }
 
     // Split: un renglón por cada línea de pago, con montos proporcionales
+    const esSplit = servicios.length > 1;
     servicios.forEach((p, i) => {
       const b = ensureC(p.cuenta_id);
       if (!b) return;
@@ -178,6 +179,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
       b.ejecutadas.push({
         ...v,
         _splitIdx: i,
+        _isSplit: esSplit,
         precio: Number(p.monto),
         comision_monto: comisionLinea,
         propina: propMonto,
@@ -206,6 +208,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
       b.comisionVenta += Number(v.comision_venta_monto || 0);
       return;
     }
+    const esSplitV = servicios.length > 1;
     servicios.forEach((p, i) => {
       const b = ensureC(p.cuenta_id);
       if (!b) return;
@@ -213,6 +216,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
       b.vendidas.push({
         ...v,
         _splitIdx: i,
+        _isSplit: esSplitV,
         precio: Number(p.monto),
         comision_venta_monto: cvLinea,
         moneda: cuentaById[p.cuenta_id]?.moneda,
@@ -342,6 +346,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
                           <div style={{fontWeight:600,color:'var(--ink-0)'}}>{v.servicio}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
                             {v.canal && <Chip tone={v.canal_tone || 'neutral'} style={{fontSize:9,padding:'1px 5px'}}>{v.canal}</Chip>}
+                            {v._isSplit && <span title="Pago dividido en varias cuentas" style={{fontSize:9,fontWeight:700,color:'#fff',background:'var(--ink-blue)',padding:'1px 5px',borderRadius:3,letterSpacing:.3}}>SPLIT</span>}
                             {v.cuenta && <span>· {v.cuenta}</span>}
                             {v.vendedora_nombre && v.vendedora_id !== v.colaboradora_id && <span style={{color:'var(--ink-blue)'}}>· Vendió {v.vendedora_alias || v.vendedora_nombre}</span>}
                             {v.notas && <span>· {v.notas}</span>}
@@ -371,6 +376,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
                             <span>Ejecutó: <strong>{v.colaboradora_alias || v.colaboradora_nombre}</strong></span>
                             {v.canal && <Chip tone={v.canal_tone || 'neutral'} style={{fontSize:9,padding:'1px 5px'}}>{v.canal}</Chip>}
+                            {v._isSplit && <span title="Pago dividido en varias cuentas" style={{fontSize:9,fontWeight:700,color:'#fff',background:'var(--ink-blue)',padding:'1px 5px',borderRadius:3,letterSpacing:.3}}>SPLIT</span>}
                           </div>
                         </div>
                         <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{sym}{Number(v.precio).toLocaleString('es-MX')}</div>
@@ -412,8 +418,8 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   // Cada línea tiene: cuenta + monto del servicio + propina (opcional) en la misma moneda
   const [splitActivo, setSplitActivo] = React.useState(false);
   const [splitLines, setSplitLines]   = React.useState([
-    {cuentaId: venta?.cuenta_id || cuentas[0]?.id || '', monto: '', tip: ''},
-    {cuentaId: cuentas[1]?.id || cuentas[0]?.id || '', monto: '', tip: ''},
+    {cuentaId: '', monto: '', tip: ''},
+    {cuentaId: '', monto: '', tip: ''},
   ]);
 
   // Al editar venta ya guardada, traer sus pagos (si existen) para pre-poblar
@@ -441,7 +447,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   }, [venta?.id]);
 
   // Helpers para split lines
-  const addSplitLine = () => setSplitLines(l => [...l, {cuentaId: cuentas[0]?.id || '', monto: '', tip: ''}]);
+  const addSplitLine = () => setSplitLines(l => [...l, {cuentaId: '', monto: '', tip: ''}]);
   const rmSplitLine  = (i) => setSplitLines(l => l.filter((_,j) => j !== i));
   const updSplitLine = (i, field, val) => setSplitLines(l => l.map((x,j) => j===i ? {...x, [field]: val} : x));
 
@@ -723,6 +729,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
               {splitLines.map((l, i) => (
                 <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 26px',gap:6,marginBottom:6,alignItems:'center'}}>
                   <select value={l.cuentaId} onChange={e=>updSplitLine(i,'cuentaId',e.target.value)} style={{...fieldStyle,padding:'7px 10px',fontSize:12}}>
+                    <option value="">— Selecciona cuenta —</option>
                     {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
                   </select>
                   <input type="number" step="0.01" min="0" value={l.monto} onChange={e=>updSplitLine(i,'monto',e.target.value)} placeholder="0" style={{...fieldStyle,padding:'7px 10px',fontSize:12,textAlign:'right'}} className="num"/>
