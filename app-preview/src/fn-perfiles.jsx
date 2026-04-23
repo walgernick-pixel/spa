@@ -17,6 +17,7 @@ const CATALOGO_PERMISOS = [
     {id:'turnos_reabrir',        label:'Reabrir un turno cerrado'},
     {id:'turnos_editar_cerrado', label:'Editar turno cerrado'},
     {id:'turnos_eliminar',       label:'Eliminar turno completo'},
+    {id:'turnos_editar_encargado', label:'Cambiar al encargado de un turno'},
     {id:'arqueo_eliminar',       label:'Eliminar arqueo individual'},
   ]},
   { id:'gastos', label:'Gastos', permisos: [

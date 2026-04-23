@@ -19,12 +19,13 @@ const PVTurnoFn = () => {
   const [loading, setLoading]       = React.useState(true);
   const [modal, setModal]           = React.useState(null); // {tipo, data?}
   const [allBlocksOpen, setAllOpen] = React.useState(true);
+  const [perfiles, setPerfiles]     = React.useState([]); // para cambiar encargado
 
   // Carga inicial
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
     setLoading(true);
-    const [t, v, s, ca, co, cu, mo, tc] = await Promise.all([
+    const [t, v, s, ca, co, cu, mo, tc, pf] = await Promise.all([
       sb.from('turnos').select('*').eq('id', turnoId).single(),
       sb.from('v_ventas').select('*').eq('turno_id', turnoId).order('creado',{ascending:false}),
       sb.from('servicios').select('*').eq('activo',true).order('orden').order('label'),
@@ -33,6 +34,7 @@ const PVTurnoFn = () => {
       sb.from('cuentas').select('*').eq('activo',true).order('orden'),
       sb.from('monedas').select('*'),
       sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
+      sb.from('perfiles').select('id,nombre_display,username,activo').eq('activo', true).order('nombre_display'),
     ]);
     if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
     setTurno(t.data);
@@ -44,6 +46,7 @@ const PVTurnoFn = () => {
     const monMap = {}; (mo.data||[]).forEach(m => monMap[m.codigo] = m);
     setMonedas(monMap);
     setTurnoCol(tc.data || []);
+    setPerfiles(pf.data || []);
     setLoading(false);
   }, [turnoId]);
 
@@ -94,6 +97,17 @@ const PVTurnoFn = () => {
   // Ir al arqueo (NO cierra el turno, solo navega)
   const irAArqueo = () => {
     navigate('turnos/arqueo/' + turnoId);
+  };
+
+  // Cambiar encargado del turno (requiere permiso turnos_editar_encargado)
+  const cambiarEncargado = async (nuevoId) => {
+    if (!nuevoId || nuevoId === turno.encargada_id) return;
+    const p = perfiles.find(x => x.id === nuevoId);
+    if (!confirmar(`¿Cambiar encargado del turno a "${p?.nombre_display || '?'}"?`)) return;
+    const {error} = await sb.from('turnos').update({encargada_id: nuevoId}).eq('id', turnoId);
+    if (error) { notify('Error: '+error.message, 'err'); return; }
+    notify('Encargado actualizado');
+    cargar();
   };
 
   // Reabrir turno cerrado (solo admin — por ahora confirma con texto)
@@ -220,7 +234,26 @@ const PVTurnoFn = () => {
             {retro && <Chip tone="amber" title={`Creado el ${creadoFmt}`}><Icon name="calendar" size={9} stroke={2}/>Retroactivo · creado {creadoFmt}</Chip>}
             {turno.folio && <span style={{fontSize:11,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>#{String(turno.folio).padStart(4,'0')}</span>}
           </div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>{ventas.length} {ventas.length===1?'servicio':'servicios'} · {ventasPorColab.length} {ventasPorColab.length===1?'colaboradora':'colaboradoras'}</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <span>{ventas.length} {ventas.length===1?'servicio':'servicios'} · {ventasPorColab.length} {ventasPorColab.length===1?'persona':'personas'}</span>
+            <span>·</span>
+            {window.can && window.can('turnos_editar_encargado') ? (
+              <>
+                <span>Encargado:</span>
+                <select value={turno.encargada_id || ''} onChange={e=>cambiarEncargado(e.target.value)}
+                  style={{fontFamily:'inherit',fontSize:11,padding:'2px 6px',border:'1px solid var(--line-1)',borderRadius:4,background:'var(--paper-raised)',color:'var(--ink-1)',cursor:'pointer'}}>
+                  <option value="">— Sin asignar —</option>
+                  {perfiles.map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre_display} (@{p.username})</option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <span>Encargado: <strong style={{color:'var(--ink-1)'}}>{
+                perfiles.find(p => p.id === turno.encargada_id)?.nombre_display || 'sin encargado'
+              }</strong></span>
+            )}
+          </div>
         </div>
         <div style={{textAlign:'right'}}>
           <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:700,letterSpacing:.6,textTransform:'uppercase',marginBottom:4}}>Total turno</div>

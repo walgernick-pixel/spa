@@ -325,7 +325,7 @@ const DashboardFn = () => {
     const porEncargada = {};
     turnos.forEach(t => {
       const k = t.encargada_id || '_sin';
-      const nombre = t.encargada_nombre || 'Sin encargada';
+      const nombre = t.encargada_nombre || 'Sin encargado';
       if (!porEncargada[k]) porEncargada[k] = {id:k, nombre, nTurnos:0, ventas:0, comisiones:0, comisionesVenta:0, gastos:0, neto:0, nServicios:0};
       porEncargada[k].nTurnos += 1;
       porEncargada[k].ventas += Number(t.total_mxn || 0);
@@ -964,7 +964,7 @@ const TurnosTable = ({turnos, arqueos, monedas}) => {
             <div style={{minWidth:0}}>
               <div style={{color:'var(--ink-0)',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{formatFecha(t.fecha)} · {t.hora_inicio || '—'}</div>
               <div style={{fontSize:10,color:'var(--ink-3)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                {t.encargada_nombre || 'Sin encargada'} · {t.n_servicios || 0} svc · {t.estado}
+                {t.encargada_nombre || 'Sin encargado'} · {t.n_servicios || 0} svc · {t.estado}
               </div>
             </div>
             <div className="num" style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600}}>${Math.round(v).toLocaleString('es-MX')}</div>
