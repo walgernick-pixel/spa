@@ -6,11 +6,12 @@ const SidebarNav = ({active}) => {
   // Usuario real desde auth (fallback a placeholder si no hay sesión)
   const auth = typeof useAuth === 'function' ? useAuth() : null;
   const perfil = auth?.perfil;
+  const rolData = auth?.rolData;
   const user = perfil
     ? { name: perfil.nombre_display || perfil.email || 'Sin nombre',
-        role: perfil.rol === 'admin' ? 'Administrador' : 'Encargada',
+        role: rolData?.nombre || perfil.rol || '—',
         tone: perfil.rol === 'admin' ? 'moss' : 'clay' }
-    : { name: 'Invitado', role: 'Sin sesión', tone: 'clay' };
+    : { name: 'Sin sesión', role: '—', tone: 'clay' };
   // Items según permisos (gerencia ve dashboard + objetivos)
   const items=[
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},

@@ -91,6 +91,7 @@ const PerfilesPermisosFn = () => {
   const [modalEditar, setModalEditar] = React.useState(null); // perfil o null
   const [modalReset, setModalReset]   = React.useState(null); // perfil o null
   const [modalNuevoRol, setModalNuevoRol] = React.useState(false);
+  const [modalEditarRol, setModalEditarRol] = React.useState(null); // rol o null
 
   // Rol abierto en acordeón
   const [rolAbierto, setRolAbierto] = React.useState(null);
@@ -145,7 +146,7 @@ const PerfilesPermisosFn = () => {
     return (
       <div style={{padding:'60px 36px',textAlign:'center'}}>
         <div style={{fontFamily:'var(--serif)',fontSize:22,color:'var(--ink-0)',marginBottom:8}}>Sin acceso</div>
-        <div style={{fontSize:13,color:'var(--ink-3)'}}>Solo el administrador puede gestionar perfiles.</div>
+        <div style={{fontSize:13,color:'var(--ink-3)'}}>Solo un perfil con rol de administración puede gestionar perfiles.</div>
       </div>
     );
   }
@@ -161,7 +162,7 @@ const PerfilesPermisosFn = () => {
         <div>
           <div style={{fontSize:11,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Configuración</div>
           <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Perfiles y permisos</div>
-          <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Usuarios con acceso al sistema. Las encargadas entran con su usuario y contraseña (sin correo).</div>
+          <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Usuarios con acceso al sistema. Cada persona entra con su usuario y contraseña (sin correo).</div>
         </div>
         {tab === 'usuarios'
           ? <Btn variant="clay" size="md" icon="plus" onClick={()=>setModalNuevo(true)}>Nuevo usuario</Btn>
@@ -308,13 +309,16 @@ const PerfilesPermisosFn = () => {
                       })}
                     </div>
                   ))}
-                  {!rol.protegido && (
-                    <div style={{padding:'14px 22px',borderTop:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'flex',justifyContent:'flex-end'}}>
+                  <div style={{padding:'14px 22px',borderTop:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'flex',justifyContent:'flex-end',gap:8}}>
+                    <button onClick={()=>setModalEditarRol(rol)} style={{background:'transparent',border:'1px solid var(--line-1)',color:'var(--ink-1)',padding:'7px 12px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>
+                      Editar nombre / descripción
+                    </button>
+                    {!rol.protegido && (
                       <button onClick={()=>eliminarRol(rol)} style={{background:'transparent',border:'1px solid rgba(183,63,94,.3)',color:'#9b3b2a',padding:'7px 12px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>
                         Eliminar rol
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -330,6 +334,7 @@ const PerfilesPermisosFn = () => {
       {modalEditar && <ModalEditarUsuario perfil={modalEditar} rolesList={roles} onClose={()=>setModalEditar(null)} onSaved={()=>{setModalEditar(null); refrescar();}}/>}
       {modalReset && <ModalResetPassword perfil={modalReset} onClose={()=>setModalReset(null)} onSaved={()=>setModalReset(null)}/>}
       {modalNuevoRol && <ModalNuevoRol onClose={()=>setModalNuevoRol(false)} onSaved={()=>{setModalNuevoRol(false); refrescar();}}/>}
+      {modalEditarRol && <ModalEditarRol rol={modalEditarRol} onClose={()=>setModalEditarRol(null)} onSaved={()=>{setModalEditarRol(null); refrescar();}}/>}
     </div>
   );
 };
@@ -365,23 +370,21 @@ const ModalNuevoUsuario = ({rolesList=[], onClose, onSaved}) => {
   return (
     <ModalShell title="Nuevo usuario" onClose={onClose}>
       <form onSubmit={submit}>
-        <FormField label="Usuario" hint="Solo letras, números, punto y guion bajo · ej: lupita">
-          <input type="text" value={username} onChange={e=>setUsername(e.target.value)} autoFocus autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="lupita" style={inputStyle}/>
+        <FormField label="Usuario" hint="Letras, números, punto y guion bajo">
+          <input type="text" value={username} onChange={e=>setUsername(e.target.value)} autoFocus autoCapitalize="off" autoCorrect="off" spellCheck={false} style={inputStyle}/>
         </FormField>
         <FormField label="Nombre para mostrar">
-          <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Lupita García" style={inputStyle}/>
+          <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} style={inputStyle}/>
         </FormField>
         <FormField label="Rol">
           <select value={rol} onChange={e=>setRol(e.target.value)} style={inputStyle}>
             {rolesList.map(r => (
-              <option key={r.clave} value={r.clave}>
-                {r.nombre}{r.descripcion ? ' · ' + r.descripcion : ''}
-              </option>
+              <option key={r.clave} value={r.clave}>{r.nombre}</option>
             ))}
           </select>
         </FormField>
-        <FormField label="Contraseña" hint="Mínimo 6 caracteres · guárdala y compártesela">
-          <input type="text" value={password} onChange={e=>setPassword(e.target.value)} placeholder="mínimo 6 caracteres" style={inputStyle}/>
+        <FormField label="Contraseña" hint="Mínimo 6 caracteres">
+          <input type="text" value={password} onChange={e=>setPassword(e.target.value)} style={inputStyle}/>
         </FormField>
 
         {error && <ErrorBox>{error}</ErrorBox>}
@@ -478,8 +481,8 @@ const ModalResetPassword = ({perfil, onClose, onSaved}) => {
         <div style={{fontSize:12.5,color:'var(--ink-3)',marginBottom:14,lineHeight:1.5}}>
           Esto reemplaza la contraseña actual de <strong>{perfil.nombre_display}</strong>. Anótala y compártesela.
         </div>
-        <FormField label="Nueva contraseña">
-          <input type="text" value={password} onChange={e=>setPassword(e.target.value)} autoFocus placeholder="mínimo 6 caracteres" style={inputStyle}/>
+        <FormField label="Nueva contraseña" hint="Mínimo 6 caracteres">
+          <input type="text" value={password} onChange={e=>setPassword(e.target.value)} autoFocus style={inputStyle}/>
         </FormField>
 
         {error && <ErrorBox>{error}</ErrorBox>}
@@ -528,14 +531,14 @@ const ModalNuevoRol = ({onClose, onSaved}) => {
   return (
     <ModalShell title="Nuevo rol" onClose={onClose}>
       <form onSubmit={submit}>
-        <FormField label="Clave" hint="Identificador corto · ej: gerente, contador · minúsculas, sin espacios">
-          <input type="text" value={clave} onChange={e=>setClave(e.target.value)} autoFocus autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="gerente" style={inputStyle}/>
+        <FormField label="Clave" hint="Minúsculas, sin espacios. No se puede cambiar después.">
+          <input type="text" value={clave} onChange={e=>setClave(e.target.value)} autoFocus autoCapitalize="off" autoCorrect="off" spellCheck={false} style={inputStyle}/>
         </FormField>
         <FormField label="Nombre para mostrar">
-          <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Gerente" style={inputStyle}/>
+          <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} style={inputStyle}/>
         </FormField>
-        <FormField label="Descripción" hint="Opcional · explicación corta del rol">
-          <input type="text" value={descripcion} onChange={e=>setDesc(e.target.value)} placeholder="Supervisión y reportes, sin manejo de caja" style={inputStyle}/>
+        <FormField label="Descripción" hint="Opcional">
+          <input type="text" value={descripcion} onChange={e=>setDesc(e.target.value)} style={inputStyle}/>
         </FormField>
 
         <div style={{padding:'10px 12px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:8,fontSize:12,color:'var(--ink-3)',lineHeight:1.5,marginBottom:10}}>
@@ -547,6 +550,55 @@ const ModalNuevoRol = ({onClose, onSaved}) => {
         <ModalActions>
           <Btn variant="ghost" onClick={onClose} type="button" disabled={loading}>Cancelar</Btn>
           <Btn variant="clay" type="submit" disabled={loading}>{loading?'Creando…':'Crear rol'}</Btn>
+        </ModalActions>
+      </form>
+    </ModalShell>
+  );
+};
+
+// ─── Modal: Editar rol (nombre y descripción) ──────────
+const ModalEditarRol = ({rol, onClose, onSaved}) => {
+  const [nombre, setNombre]    = React.useState(rol.nombre || '');
+  const [descripcion, setDesc] = React.useState(rol.descripcion || '');
+  const [loading, setLoading]  = React.useState(false);
+  const [error, setError]      = React.useState('');
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    setError('');
+    if (!nombre.trim()) return setError('Falta el nombre');
+    setLoading(true);
+    try {
+      const {error} = await sb.from('roles').update({
+        nombre: nombre.trim(),
+        descripcion: descripcion.trim() || null,
+      }).eq('clave', rol.clave);
+      if (error) throw error;
+      notify('Rol actualizado');
+      onSaved();
+    } catch(err) {
+      setError(err.message);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <ModalShell title={`Editar rol: ${rol.clave}`} onClose={onClose}>
+      <form onSubmit={submit}>
+        <FormField label="Clave" hint="No se puede cambiar">
+          <input type="text" value={rol.clave} disabled style={{...inputStyle, opacity:.5, cursor:'not-allowed'}}/>
+        </FormField>
+        <FormField label="Nombre para mostrar">
+          <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} autoFocus style={inputStyle}/>
+        </FormField>
+        <FormField label="Descripción" hint="Opcional">
+          <input type="text" value={descripcion} onChange={e=>setDesc(e.target.value)} style={inputStyle}/>
+        </FormField>
+
+        {error && <ErrorBox>{error}</ErrorBox>}
+
+        <ModalActions>
+          <Btn variant="ghost" onClick={onClose} type="button" disabled={loading}>Cancelar</Btn>
+          <Btn variant="clay" type="submit" disabled={loading}>{loading?'Guardando…':'Guardar'}</Btn>
         </ModalActions>
       </form>
     </ModalShell>
