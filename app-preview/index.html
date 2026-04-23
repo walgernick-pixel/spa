@@ -2,8 +2,24 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>CashFlow Spa — Mockup navegable</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Punta Xcalacoco Massages</title>
+
+<!-- PWA: manifest + theme -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<meta name="theme-color" content="#d66d6a"/>
+<meta name="description" content="Sistema de gestión de punto de venta, gastos y arqueo"/>
+
+<!-- iOS: installable standalone -->
+<link rel="apple-touch-icon" href="pwa/apple-touch-icon.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Xcalacoco"/>
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="pwa/favicon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="pwa/icon-192.png"/>
+
 <link rel="stylesheet" href="../mockups/src/tokens.css"/>
 <style>
   html,body{margin:0;padding:0;height:100%;overflow:hidden}
@@ -26,7 +42,6 @@
 </head>
 <body>
 <div id="root"></div>
-<div class="proto-badge">prototipo de administración · sin datos reales</div>
 
 <!-- Supabase CDN (client library) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
