@@ -154,7 +154,6 @@ const LoginFn = () => {
             <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6}}>Usuario</label>
             <input
               type="text" autoFocus value={usuario} onChange={e=>setUsuario(e.target.value)} autoComplete="username"
-              placeholder="lupita"
               autoCapitalize="off" autoCorrect="off" spellCheck={false}
               style={{width:'100%',padding:'11px 14px',fontSize:14,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}
             />
@@ -163,7 +162,6 @@ const LoginFn = () => {
             <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6}}>Contraseña</label>
             <input
               type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password"
-              placeholder="••••••••"
               style={{width:'100%',padding:'11px 14px',fontSize:14,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}
             />
           </div>
