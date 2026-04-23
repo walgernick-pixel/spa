@@ -176,19 +176,31 @@ const GastosListFn = ({onRowClick, onNew}) => {
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
       <style>{`
         .cf-show-narrow { display: none; }
-        /* Tablet (900-1199px): oculta proveedor, categoría */
+        /* Tablet (900-1199px): KPIs compactos en 4 cols, oculta proveedor+categoría en tabla */
         @media (max-width: 1199px) {
           .cf-gasto-row {
             grid-template-columns: 82px 1fr 120px 140px 36px !important;
             gap: 12px !important;
           }
           .cf-gasto-row .cf-hide-md { display: none !important; }
-          .cf-gastos-kpis { grid-template-columns: repeat(2, 1fr) !important; }
-          .cf-gastos-kpis .cf-kpi-valor { font-size: 22px !important; }
-          .cf-gastos-filtros { gap: 8px !important; }
-          .cf-gastos-filtros .cf-filter-search { flex: 1 1 100% !important; max-width: none !important; }
+          /* KPIs: seguir en 4 columnas pero compactos */
+          .cf-gastos-kpis .cf-kpi-cell { padding: 10px 12px !important; }
+          .cf-gastos-kpis .cf-kpi-lbl { font-size: 9.5px !important; margin-bottom: 4px !important; }
+          .cf-gastos-kpis .cf-kpi-valor { font-size: 20px !important; }
+          .cf-gastos-kpis .cf-kpi-valor span { font-size: 20px !important; }
+          .cf-gastos-kpis .cf-kpi-sub { font-size: 10px !important; }
+          /* Header compacto */
+          .cf-gastos-header { padding: 16px 28px 10px !important; }
+          .cf-gastos-header .cf-gastos-title { font-size: 24px !important; }
+          .cf-gastos-header .cf-gastos-subtitle { font-size: 11.5px !important; margin-top: 3px !important; }
+          /* Filtros compactos */
+          .cf-gastos-filtros { padding: 0 28px 8px !important; gap: 8px !important; }
+          .cf-gastos-filtros .cf-filter-search { flex: 1 1 220px !important; }
+          /* Reduce padding lateral de tabla */
+          .cf-gastos-kpi-wrap { padding: 0 28px 10px !important; }
+          .cf-gastos-table-header, .cf-gastos-table-body { padding-left: 28px !important; padding-right: 28px !important; }
         }
-        /* Mobile (<900px): condensa todo */
+        /* Mobile (<900px) */
         @media (max-width: 900px) {
           .cf-gasto-row {
             grid-template-columns: 1fr auto 36px !important;
@@ -197,15 +209,15 @@ const GastosListFn = ({onRowClick, onNew}) => {
           }
           .cf-gasto-row .cf-hide-narrow { display: none !important; }
           .cf-show-narrow { display: inline !important; }
-          .cf-gastos-kpis { grid-template-columns: 1fr !important; }
+          .cf-gastos-kpis { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style>
       {!window.__EMBEDDED__ && <Sidebar active="gastos"/>}
       <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
-        <div style={{padding:'28px 36px 20px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
+        <div className="cf-gastos-header" style={{padding:'28px 36px 20px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
           <div>
-            <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Gastos</div>
-            <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Egresos del spa · independientes de turnos</div>
+            <div className="cf-gastos-title" style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Gastos</div>
+            <div className="cf-gastos-subtitle" style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Egresos del spa · independientes de turnos</div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <Btn variant="secondary" size="md" icon="download" onClick={()=>notify('Exportar — próximamente','info')}>Exportar</Btn>
@@ -214,7 +226,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
         </div>
 
         {/* Métricas del mes actual */}
-        <div style={{padding:'0 36px 18px'}}>
+        <div className="cf-gastos-kpi-wrap" style={{padding:'0 36px 18px'}}>
           <div className="cf-gastos-kpis" style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
             <MetricCell
               lbl={`${mesLabel(new Date())}`}
