@@ -10,6 +10,7 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
   const [historial, setHist]  = React.useState([]);
   const [compUrl, setCompUrl] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [creador, setCreador] = React.useState(null);
   const [busy, setBusy]       = React.useState(false);
   const [archivado, setArch]  = React.useState(false);
 
@@ -43,6 +44,14 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
     }
 
     setGasto(data);
+
+    // Creador (quien capturó el gasto)
+    if (data?.creado_por) {
+      const {data: pf} = await sb.from('perfiles').select('id, nombre_display, username').eq('id', data.creado_por).maybeSingle();
+      setCreador(pf || null);
+    } else {
+      setCreador(null);
+    }
 
     // Splits
     const {data: sp} = await sb.from('gasto_pagos').select('*, cta:cuentas(label, moneda, tipo)').eq('gasto_id', gastoId).order('orden');
@@ -163,6 +172,11 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
                   <DataCellFn lbl="Cuenta" val={gasto.cuenta} sub={`${gasto.cuenta_tipo} · ${gasto.moneda}`}/>
                   <DataCellFn lbl="Proveedor" val={gasto.proveedor || '—'}/>
                   <DataCellFn lbl="Fecha" val={formatFecha(gasto.fecha)}/>
+                </div>
+
+                <div style={{marginTop:16,paddingTop:14,borderTop:'1px dashed var(--line-1)',fontSize:11.5,color:'var(--ink-3)',display:'flex',gap:14,flexWrap:'wrap'}}>
+                  <span>Capturado por: <strong style={{color:'var(--ink-2)'}}>{creador?.nombre_display || '—'}</strong>{creador?.username && <span style={{color:'var(--ink-3)',fontFamily:'var(--mono)'}}> · @{creador.username}</span>}</span>
+                  {gasto.creado && <span>· Registrado el {new Date(gasto.creado).toLocaleString('es-MX',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>}
                 </div>
               </div>
 
