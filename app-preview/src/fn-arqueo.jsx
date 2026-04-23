@@ -534,6 +534,8 @@ const ArqueoFn = () => {
         <ReciboPrintable
           turno={turno}
           ventas={ventas}
+          ventaPagos={ventaPagos}
+          cuentas={cuentas}
           porCuenta={porCuenta}
           turnoColabs={turnoColabs}
           monedas={monedas}
