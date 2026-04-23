@@ -44,15 +44,21 @@ Deno.serve(async (req) => {
   const { data: { user: caller }, error: callerErr } = await callerClient.auth.getUser();
   if (callerErr || !caller) return json({ error: 'no_autenticado' }, 401);
 
-  // Verificar rol admin del caller
-  const { data: callerPerfil } = await callerClient
+  // Cliente admin con service_role (bypass RLS, puede crear usuarios en auth)
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // Verificar rol admin del caller — usando service_role para evitar RLS
+  const { data: callerPerfil, error: perfilErr } = await admin
     .from('perfiles').select('rol, activo').eq('id', caller.id).maybeSingle();
+  if (perfilErr) return json({ error: 'error_leyendo_perfil', mensaje: perfilErr.message }, 500);
   if (!callerPerfil || callerPerfil.rol !== 'admin' || !callerPerfil.activo) {
-    return json({ error: 'no_autorizado' }, 403);
+    return json({ error: 'no_autorizado', mensaje: 'Necesitas ser admin activo' }, 403);
   }
 
-  // Cliente admin con service_role (puede crear usuarios en auth)
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+  // Cargar roles válidos de la DB (para validar rol en create/edit)
+  const { data: rolesValidos } = await admin.from('roles').select('clave');
+  const clavesValidas = new Set((rolesValidos || []).map(r => r.clave));
+  const validarRol = (r: string) => clavesValidas.has(r);
 
   let body: any;
   try { body = await req.json(); }
@@ -64,12 +70,13 @@ Deno.serve(async (req) => {
   if (action === 'crear') {
     const username       = normUsername(body.username);
     const nombre_display = String(body.nombre_display || '').trim();
-    const rol            = body.rol === 'admin' ? 'admin' : 'encargada';
+    const rol            = String(body.rol || 'encargada');
     const password       = String(body.password || '');
 
     if (!validUsername(username)) return json({ error: 'username_invalido', mensaje: 'Solo letras, números, punto y guion bajo (3-32 caracteres)' }, 400);
     if (!nombre_display)           return json({ error: 'falta_nombre' }, 400);
     if (password.length < 6)       return json({ error: 'password_corta', mensaje: 'Mínimo 6 caracteres' }, 400);
+    if (!validarRol(rol))          return json({ error: 'rol_invalido', mensaje: `El rol "${rol}" no existe` }, 400);
 
     // ¿username ya existe?
     const { data: existe } = await admin.from('perfiles').select('id').eq('username', username).maybeSingle();
@@ -79,16 +86,17 @@ Deno.serve(async (req) => {
     const { data: creado, error: createErr } = await admin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // no mandar email de confirmación
+      email_confirm: true,
       user_metadata: { username, nombre_display, rol },
     });
     if (createErr) return json({ error: 'create_failed', mensaje: createErr.message }, 400);
 
-    // El trigger handle_new_user ya creó el perfil, pero por si acaso hacemos upsert
-    await admin.from('perfiles').upsert({
+    // El trigger handle_new_user ya creó el perfil, pero aseguramos datos finales
+    const { error: upsertErr } = await admin.from('perfiles').upsert({
       id: creado.user!.id,
       email, username, nombre_display, rol, activo: true,
     }, { onConflict: 'id' });
+    if (upsertErr) return json({ error: 'perfil_upsert_failed', mensaje: upsertErr.message }, 500);
 
     return json({ ok: true, id: creado.user!.id, username });
   }
@@ -100,7 +108,10 @@ Deno.serve(async (req) => {
 
     const patch: Record<string, unknown> = {};
     if (body.nombre_display !== undefined) patch.nombre_display = String(body.nombre_display).trim();
-    if (body.rol !== undefined)            patch.rol = body.rol === 'admin' ? 'admin' : 'encargada';
+    if (body.rol !== undefined) {
+      if (!validarRol(String(body.rol))) return json({ error: 'rol_invalido', mensaje: `El rol "${body.rol}" no existe` }, 400);
+      patch.rol = String(body.rol);
+    }
     if (body.activo !== undefined)         patch.activo = !!body.activo;
     patch.actualizado = new Date().toISOString();
 
