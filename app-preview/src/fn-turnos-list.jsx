@@ -385,7 +385,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
             <span style={{fontSize:12,color:'var(--ink-2)'}}>{t.encargada_nombre.split(' ')[0]}</span>
           </>
         ) : (
-          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargada</span>
+          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargado</span>
         )}
       </div>
 
