@@ -111,6 +111,24 @@ const PVTurnoFn = () => {
     cargar();
   };
 
+  // Eliminar turno DEFINITIVAMENTE (solo gerencia — borra ventas/arqueos en cascada)
+  const eliminarTurno = async () => {
+    const msg = '⚠️ ELIMINAR TURNO\n\n' +
+      'Esta acción BORRA PERMANENTEMENTE:\n' +
+      '  · El turno\n' +
+      `  · ${ventas.length} servicio${ventas.length===1?'':'s'} vendido${ventas.length===1?'':'s'}\n` +
+      '  · Todos los arqueos y firmas asociadas\n\n' +
+      'No se puede recuperar. Útil solo para corregir datos mal capturados.\n\n' +
+      'Escribe ELIMINAR (mayúsculas) para confirmar:';
+    const pass = window.prompt(msg);
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
+    const {error} = await sb.from('turnos').delete().eq('id', turnoId);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Turno eliminado permanentemente');
+    navigate('turnos');
+  };
+
   // Agrupar ventas por colaboradora (como ejecutor O como vendedora)
   const ventasPorColab = React.useMemo(()=>{
     const map = {};
@@ -241,7 +259,10 @@ const PVTurnoFn = () => {
         {ventasPorColab.length === 0 ? (
           <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
             <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600,color:'var(--ink-1)',marginBottom:6}}>Turno sin servicios aún</div>
-            <div style={{fontSize:13,color:'var(--ink-3)'}}>Registra el primer servicio vendido con el botón de arriba.</div>
+            <div style={{fontSize:13,color:'var(--ink-3)',marginBottom:14}}>Registra el primer servicio vendido con el botón de arriba.</div>
+            {window.can && window.can('eliminar_turno') && turno.estado === 'abierto' && (
+              <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar turno vacío</Btn>
+            )}
           </div>
         ) : (
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -260,12 +281,17 @@ const PVTurnoFn = () => {
 
         {/* Ir al arqueo */}
         {turno.estado === 'abierto' && ventasPorColab.length > 0 && (
-          <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
+          <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
             <div>
               <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Cuando estén listas, pasa al arqueo</div>
               <div style={{fontSize:12,color:'var(--ink-2)'}}>Revisa el efectivo. Desde ahí cierras el turno definitivamente (puedes volver antes).</div>
             </div>
-            <Btn variant="moss" icon="arrow-right" size="lg" onClick={irAArqueo}>Ir a arqueo</Btn>
+            <div style={{display:'flex',gap:8}}>
+              {window.can && window.can('eliminar_turno') && (
+                <Btn variant="ghost" size="md" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
+              )}
+              <Btn variant="moss" icon="arrow-right" size="lg" onClick={irAArqueo}>Ir a arqueo</Btn>
+            </div>
           </div>
         )}
 
@@ -278,9 +304,12 @@ const PVTurnoFn = () => {
                 <div style={{fontSize:12,color:'var(--ink-2)'}}>Solo visualización. Para modificar algún dato, reábrelo (requiere admin).</div>
               </div>
             </div>
-            <div style={{display:'flex',gap:8}}>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <Btn variant="ghost" size="md" icon="lock" onClick={reabrirTurno}>Reabrir turno</Btn>
               <Btn variant="secondary" onClick={()=>navigate('turnos/arqueo/'+turnoId)}>Ver arqueo</Btn>
+              {window.can && window.can('eliminar_turno') && (
+                <Btn variant="ghost" size="md" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar</Btn>
+              )}
             </div>
           </div>
         )}

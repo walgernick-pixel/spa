@@ -42,6 +42,8 @@ const confirmar = (msg) => window.confirm(msg);
 //   'reabrir_turno'        → admin
 //   'ver_turnos_cerrados'  → admin + encargada-del-turno
 //   'editar_turno_cerrado' → admin
+//   'eliminar_turno'       → gerencia (+ password ELIMINAR por ahora)
+//   'eliminar_arqueo'      → gerencia (+ password ELIMINAR por ahora)
 //   'exportar'             → gerencia + admin
 // ──────────────────────────────────────────
 const can = (_permiso) => true;

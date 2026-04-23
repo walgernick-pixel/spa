@@ -167,6 +167,29 @@ const ArqueoFn = () => {
     saveTimerRef.current = setTimeout(() => doSave(undefined, val), 800);
   };
 
+  // Eliminar arqueo (solo gerencia — borra las filas de arqueos para este turno)
+  const eliminarArqueo = async () => {
+    const pass = window.prompt('⚠️ ELIMINAR ARQUEO\n\nEsto borra todas las filas de arqueo de este turno (todos los montos reportados). El turno queda sin arqueo.\n\nEscribe ELIMINAR para confirmar:');
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
+    const {error} = await sb.from('arqueos').delete().eq('turno_id', turnoId);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Arqueo eliminado');
+    setReportados({});
+    cargar();
+  };
+
+  // Eliminar turno completo (borra turno + ventas + arqueos + colabs)
+  const eliminarTurnoCompleto = async () => {
+    const pass = window.prompt(`⚠️ ELIMINAR TURNO COMPLETO\n\nEsto BORRA PERMANENTEMENTE:\n  · El turno\n  · ${ventas.length} ventas\n  · Todos los arqueos y firmas\n\nNo se puede recuperar.\n\nEscribe ELIMINAR para confirmar:`);
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
+    const {error} = await sb.from('turnos').delete().eq('id', turnoId);
+    if (error) return notify('Error: '+error.message,'err');
+    notify('Turno eliminado');
+    navigate('turnos');
+  };
+
   // Reabrir turno cerrado (solo admin — por ahora confirma con texto)
   const reabrirTurno = async () => {
     const pass = window.prompt('⚠️ REABRIR turno cerrado\n\nEsto permitirá agregar, editar o borrar servicios y modificar el arqueo.\nSolo administradores deberían hacer esto.\n\nEscribe REABRIR (mayúsculas) para confirmar:');
@@ -444,6 +467,12 @@ const ArqueoFn = () => {
               </div>
               <Btn variant="secondary" size="sm" icon="receipt" onClick={imprimirRecibo}>Imprimir recibo</Btn>
               <Btn variant="ghost" size="sm" onClick={reabrirTurno}>Reabrir turno</Btn>
+              {window.can && window.can('eliminar_arqueo') && (
+                <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarArqueo} style={{color:'#b73f5e'}}>Borrar arqueo</Btn>
+              )}
+              {window.can && window.can('eliminar_turno') && (
+                <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTurnoCompleto} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
+              )}
             </div>
           )}
         </div>
