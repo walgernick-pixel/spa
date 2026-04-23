@@ -318,22 +318,20 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                   <div style={{flex:1}}/>
                   <div style={{textAlign:'right'}}>
                     <span style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginRight:8}}>A recibir</span>
-                    <span className="num" style={{fontSize:20,fontWeight:700,color:color,fontFamily:'var(--serif)',letterSpacing:-.5}}>
-                      {ocultarMontos ? <span style={{letterSpacing:3,color:'var(--ink-3)'}}>••••</span> : <>{sym}{grupo.totalRecibir.toLocaleString('es-MX',{minimumFractionDigits:grupo.totalRecibir%1?2:0,maximumFractionDigits:2})}</>}
-                    </span>
+                    <span className="num" style={{fontSize:20,fontWeight:700,color:color,fontFamily:'var(--serif)',letterSpacing:-.5}}>{sym}{grupo.totalRecibir.toLocaleString('es-MX',{minimumFractionDigits:grupo.totalRecibir%1?2:0,maximumFractionDigits:2})}</span>
                   </div>
                 </div>
 
                 {/* Sub-desglose: comisión ejec + propinas + comisión venta */}
                 <div style={{padding:'6px 14px',display:'flex',gap:14,fontSize:10.5,color:'var(--ink-3)',borderBottom:'1px dashed var(--line-2)',flexWrap:'wrap'}}>
                   {grupo.ejecutadas.length > 0 && (
-                    <span>Com. <strong className="num" style={{color:'var(--clay)'}}>{ocultarMontos ? '••••' : `${sym}${grupo.comisionEjec.toLocaleString('es-MX',{maximumFractionDigits:2})}`}</strong></span>
+                    <span>Com. <strong className="num" style={{color:'var(--clay)'}}>{sym}{grupo.comisionEjec.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
                   )}
                   {grupo.propina > 0 && (
-                    <span>Propinas <strong className="num" style={{color:'var(--ink-2)'}}>{ocultarMontos ? '••••' : `${sym}${grupo.propina.toLocaleString('es-MX',{maximumFractionDigits:2})}`}</strong></span>
+                    <span>Propinas <strong className="num" style={{color:'var(--ink-2)'}}>{sym}{grupo.propina.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
                   )}
                   {grupo.comisionVenta > 0 && (
-                    <span>Com. venta <strong className="num" style={{color:'var(--ink-blue)'}}>{ocultarMontos ? '••••' : `${sym}${grupo.comisionVenta.toLocaleString('es-MX',{maximumFractionDigits:2})}`}</strong></span>
+                    <span>Com. venta <strong className="num" style={{color:'var(--ink-blue)'}}>{sym}{grupo.comisionVenta.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
                   )}
                   <div style={{flex:1}}/>
                   {grupo.ejecutadas.length > 0 && <span>· {grupo.ejecutadas.length} ejecutado{grupo.ejecutadas.length!==1?'s':''}</span>}
@@ -358,9 +356,9 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                             {v.notas && <span>· {v.notas}</span>}
                           </div>
                         </div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{ocultarMontos ? '••••' : `${sym}${Number(v.precio).toLocaleString('es-MX')}`}</div>
-                        <div className="num" style={{textAlign:'right',color:'var(--clay)',fontSize:11.5,fontWeight:600}}>{v.comision_pct}%{ocultarMontos ? '' : ` · ${sym}${Math.round(v.comision_monto).toLocaleString('es-MX')}`}</div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-3)',fontSize:11.5}}>{ocultarMontos ? (v.propina>0?'••••':'—') : (v.propina>0?`${sym}${Math.round(v.propina).toLocaleString('es-MX')}`:'—')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{sym}{Number(v.precio).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--clay)',fontSize:11.5,fontWeight:600}}>{v.comision_pct}% · {sym}{Math.round(v.comision_monto).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-3)',fontSize:11.5}}>{v.propina>0?`${sym}${Math.round(v.propina).toLocaleString('es-MX')}`:'—'}</div>
                         <div style={{display:'flex',gap:2,justifyContent:'flex-end'}}>
                           {turnoAbierto && !c.pagado && <button onClick={()=>onEditVenta(v)} title="Editar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="edit" size={12}/></button>}
                           {turnoAbierto && !c.pagado && <button onClick={()=>onDelVenta(v)} title="Borrar" style={{background:'transparent',border:'none',cursor:'pointer',padding:4,color:'var(--ink-3)'}}><Icon name="trash" size={12}/></button>}
@@ -385,8 +383,8 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                             {v._isSplit && <span title="Pago dividido en varias cuentas" style={{fontSize:9,fontWeight:700,color:'#fff',background:'var(--ink-blue)',padding:'1px 5px',borderRadius:3,letterSpacing:.3}}>SPLIT</span>}
                           </div>
                         </div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{ocultarMontos ? '••••' : `${sym}${Number(v.precio).toLocaleString('es-MX')}`}</div>
-                        <div className="num" style={{textAlign:'right',color:'var(--ink-blue)',fontSize:11.5,fontWeight:600}}>{v.comision_venta_pct}%{ocultarMontos ? '' : ` · ${sym}${Math.round(v.comision_venta_monto||0).toLocaleString('es-MX')}`}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-2)',fontSize:11}}>{sym}{Number(v.precio).toLocaleString('es-MX')}</div>
+                        <div className="num" style={{textAlign:'right',color:'var(--ink-blue)',fontSize:11.5,fontWeight:600}}>{v.comision_venta_pct}% · {sym}{Math.round(v.comision_venta_monto||0).toLocaleString('es-MX')}</div>
                       </div>
                     ))}
                   </div>
