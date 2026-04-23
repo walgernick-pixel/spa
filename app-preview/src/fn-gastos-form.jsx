@@ -18,8 +18,9 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   const [cuentaId, setCuenta]     = React.useState('');
   const [monto, setMonto]         = React.useState('');
   const [esFacturable, setEF]     = React.useState(false);  // fiscal: si tiene factura
-  const [ivaTasaId, setIvaTasa]   = React.useState('');  // id de iva_tasas, o 'custom', o ''
+  const [ivaTasaId, setIvaTasa]   = React.useState('');  // id de iva_tasas, o 'custom', o 'manual', o ''
   const [ivaCustom, setIvaCustom] = React.useState('');  // si eligió custom, % escrito
+  const [ivaManual, setIvaManual] = React.useState('');  // si eligió 'manual', monto directo en $
   const [descripcion, setDesc]    = React.useState('');
   const [notas, setNotas]         = React.useState('');
   const [file, setFile]           = React.useState(null);
@@ -83,8 +84,11 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       setDesc(data.descripcion || '');
       setNotas(data.notas || '');
       setEF(data.es_facturable ?? false);
-      // IVA
-      if (data.iva_pct !== null && data.iva_pct !== undefined) {
+      // IVA: preferir monto manual si existe
+      if (data.iva_monto !== null && data.iva_monto !== undefined) {
+        setIvaTasa('manual');
+        setIvaManual(String(data.iva_monto));
+      } else if (data.iva_pct !== null && data.iva_pct !== undefined) {
         const match = catalogos.ivaTasas.find(t => Number(t.porcentaje) === Number(data.iva_pct));
         if (match) setIvaTasa(match.id);
         else { setIvaTasa('custom'); setIvaCustom(String(data.iva_pct)); }
@@ -109,15 +113,24 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   const montoMXN  = montoNum * tc;
 
   // IVA derivado
-  const ivaPct = React.useMemo(()=>{
-    if (!ivaTasaId) return 0;
+  const isManualIva = ivaTasaId === 'manual';
+  const ivaManualNum = parseFloat(ivaManual) || 0;
+  const ivaPctSelect = React.useMemo(()=>{
+    if (!ivaTasaId || ivaTasaId === 'manual') return 0;
     if (ivaTasaId === 'custom') return parseFloat(ivaCustom) || 0;
     const t = catalogos.ivaTasas.find(x=>x.id===ivaTasaId);
     return t ? Number(t.porcentaje) : 0;
   },[ivaTasaId, ivaCustom, catalogos.ivaTasas]);
 
-  const subtotal = ivaPct > 0 ? montoNum / (1 + ivaPct/100) : montoNum;
-  const ivaImporte = montoNum - subtotal;
+  // Si es manual, IVA importe = monto ingresado; si no, se deriva del %
+  const ivaImporte = isManualIva
+    ? Math.min(ivaManualNum, montoNum) // no puede ser mayor al monto
+    : (ivaPctSelect > 0 ? montoNum - montoNum/(1+ivaPctSelect/100) : 0);
+  const subtotal   = montoNum - ivaImporte;
+  // % efectivo (para guardar en BD y reportar)
+  const ivaPct = isManualIva
+    ? (subtotal > 0 ? (ivaImporte / subtotal) * 100 : 0)
+    : ivaPctSelect;
 
   // Sumas de splits
   const splitSum = splits.reduce((a,s)=>a+(parseFloat(s.monto)||0), 0);
@@ -199,7 +212,8 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
         : cuenta.moneda,
       tc_momento: tc,
       es_facturable: esFacturable,
-      iva_pct: (esFacturable && ivaPct > 0) ? ivaPct : null,
+      iva_pct:   (esFacturable && ivaPct > 0) ? Number(ivaPct.toFixed(2)) : null,
+      iva_monto: (esFacturable && isManualIva && ivaImporte > 0) ? Number(ivaImporte.toFixed(2)) : null,
       notas: notas.trim() || null,
       ...(comprobante_url ? {comprobante_url} : {}),
     };
@@ -388,10 +402,11 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
               <div style={{marginBottom:18,padding:'14px 16px',background:'var(--paper-sunk)',border:'1px solid var(--line-2)',borderRadius:10}}>
                 <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:ivaPct>0?12:0,flexWrap:'wrap'}}>
                   <div style={{fontSize:11,fontWeight:600,color:'var(--ink-2)',letterSpacing:.2,textTransform:'uppercase'}}>IVA</div>
-                  <select className="cf-input" value={ivaTasaId} onChange={e=>setIvaTasa(e.target.value)} style={{flex:'0 1 200px'}}>
+                  <select className="cf-input" value={ivaTasaId} onChange={e=>setIvaTasa(e.target.value)} style={{flex:'0 1 220px'}}>
                     <option value="">Sin IVA</option>
                     {catalogos.ivaTasas.map(t=>(<option key={t.id} value={t.id}>{t.label} ({t.porcentaje}%)</option>))}
                     <option value="custom">Otro porcentaje…</option>
+                    <option value="manual">Monto manual…</option>
                   </select>
                   {ivaTasaId === 'custom' && (
                     <div style={{position:'relative',width:120}}>
@@ -399,7 +414,13 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                       <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>%</span>
                     </div>
                   )}
-                  <div style={{fontSize:11,color:'var(--ink-3)',marginLeft:'auto'}}>Opcional · para factura</div>
+                  {ivaTasaId === 'manual' && (
+                    <div style={{position:'relative',width:140}}>
+                      <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>$</span>
+                      <input type="number" step="0.01" min="0" value={ivaManual} onChange={e=>setIvaManual(e.target.value)} placeholder="0.00" className="cf-input num" style={{paddingLeft:22,textAlign:'right'}}/>
+                    </div>
+                  )}
+                  <div style={{fontSize:11,color:'var(--ink-3)',marginLeft:'auto'}}>{ivaTasaId === 'manual' ? 'IVA exacto según factura' : 'Opcional · para factura'}</div>
                 </div>
                 {ivaPct > 0 && montoNum > 0 && (
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,paddingTop:12,borderTop:'1px dashed var(--line-1)'}}>
