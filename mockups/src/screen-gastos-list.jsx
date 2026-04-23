@@ -125,10 +125,10 @@ const GastoRow = ({g,first})=>{
 };
 
 const MetricCell = ({lbl,value,sub,delta})=>(
-  <div style={{background:'var(--paper-raised)',padding:'16px 20px'}}>
-    <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>{lbl}</div>
-    <div style={{marginBottom:4}}>{value}</div>
-    <div style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--ink-3)'}}>
+  <div className="cf-kpi-cell" style={{background:'var(--paper-raised)',padding:'16px 20px'}}>
+    <div className="cf-kpi-lbl" style={{fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>{lbl}</div>
+    <div className="cf-kpi-valor" style={{marginBottom:4}}>{value}</div>
+    <div className="cf-kpi-sub" style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--ink-3)'}}>
       {delta!==undefined && !isNaN(delta) && (
         <span style={{color:delta<=0?'var(--moss-700)':'var(--clay-700)',fontWeight:600,display:'inline-flex',alignItems:'center',gap:2}}>
           <Icon name={delta<=0?'arrow-down':'arrow-up'} size={11} stroke={2}/>
