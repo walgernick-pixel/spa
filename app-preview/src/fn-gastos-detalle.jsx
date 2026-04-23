@@ -20,6 +20,12 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
     // Intentamos desde la vista (solo activos)
     let {data, error} = await sb.from('v_gastos').select('*').eq('id', gastoId).maybeSingle();
 
+    // La vista v_gastos no incluye creado_por — lo traemos aparte del raw
+    if (data) {
+      const {data: raw} = await sb.from('gastos').select('creado_por').eq('id', gastoId).maybeSingle();
+      if (raw) data.creado_por = raw.creado_por;
+    }
+
     // Si no está en la vista, puede estar archivado → traerlo crudo
     if (!data) {
       const raw = await sb.from('gastos').select(`

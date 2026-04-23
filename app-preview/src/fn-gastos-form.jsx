@@ -59,10 +59,9 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       const unq = [...new Set((cp.data||[]).map(r=>r.proveedor).filter(Boolean))];
       setProvs(unq);
 
-      // Defaults solo en modo nuevo
+      // No se preseleccionan defaults — el usuario elige concepto y cuenta a conciencia.
+      // El único default conservado es la tasa de IVA marcada como default en el catálogo.
       if (!editando) {
-        if (cc.data?.[0]) setConcepto(cc.data[0].id);
-        if (cu.data?.[0]) setCuenta(cu.data[0].id);
         const def = (ci.data||[]).find(t=>t.es_default);
         if (def) setIvaTasa(def.id);
       }
@@ -324,6 +323,7 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                 <F label="Concepto" hint="La categoría se asigna automáticamente">
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
                     <select className="cf-input" value={conceptoId} onChange={e=>setConcepto(e.target.value)} style={{flex:1}}>
+                      <option value="">— Selecciona un concepto —</option>
                       {catalogos.categorias.map(kat=>{
                         const items = catalogos.conceptos.filter(c=>c.categoria===kat.id);
                         if (items.length===0) return null;
@@ -355,6 +355,7 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                 <F label={showSplit ? 'Cuenta (ver división abajo)' : 'Cuenta'} hint="La moneda se deriva de la cuenta">
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
                     <select className="cf-input" value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={{flex:1,opacity:showSplit?.6:1}} disabled={showSplit}>
+                      <option value="">— Selecciona una cuenta —</option>
                       {catalogos.cuentas.map(c=>(
                         <option key={c.id} value={c.id}>{c.label} · {c.tipo} · {c.moneda}</option>
                       ))}
