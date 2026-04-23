@@ -77,18 +77,27 @@ const useMetricasSemana = (turnos) => {
 // ─── Pantalla principal ───
 const TurnosListFn = () => {
   const [turnos, setTurnos]       = React.useState([]);
+  const [perfilesMap, setPfMap]   = React.useState({}); // id → {nombre_display, username}
   const [loading, setLoading]     = React.useState(true);
   const [abriendo, setAbriendo]   = React.useState(false);
   const [modalRetro, setModalR]   = React.useState(false);
 
   const cargar = React.useCallback(async () => {
     setLoading(true);
-    const { data, error } = await sb.from('v_turnos_resumen')
-      .select('*')
-      .order('fecha', { ascending: false })
-      .order('hora_inicio', { ascending: false })
-      .limit(30);
+    const [turnosQ, perfilesQ] = await Promise.all([
+      sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(30),
+      sb.from('perfiles').select('id, nombre_display, username'),
+    ]);
+    const { data, error } = turnosQ;
     if (error) { notify('Error cargando turnos: '+error.message, 'err'); setLoading(false); return; }
+    const pm = {}; (perfilesQ.data || []).forEach(p => { pm[p.id] = p; });
+    setPfMap(pm);
+    // Enriquecer cada turno: si la vista no trajo nombre, usar lookup local
+    (data || []).forEach(t => {
+      if (!t.encargada_nombre && t.encargada_id && pm[t.encargada_id]) {
+        t.encargada_nombre = pm[t.encargada_id].nombre_display;
+      }
+    });
     // Cargar arqueos + monedas para computar diferencia total por turno
     const turnoIds = (data||[]).map(t => t.id);
     if (turnoIds.length > 0) {

@@ -226,7 +226,10 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       // Borrar splits viejos (se re-crean abajo)
       await sb.from('gasto_pagos').delete().eq('gasto_id', gastoId);
     } else {
-      const {data, error} = await sb.from('gastos').insert(payload).select('id').single();
+      // Al crear nuevo, guardar quién lo capturó (perfil del admin/encargado logueado)
+      const creadorId = window.__auth?.perfil?.id || null;
+      const payloadCreate = { ...payload, ...(creadorId ? { creado_por: creadorId } : {}) };
+      const {data, error} = await sb.from('gastos').insert(payloadCreate).select('id').single();
       if (error) { setSaving(false); return notify('Error: '+error.message,'err'); }
       gastoIdFinal = data.id;
     }
