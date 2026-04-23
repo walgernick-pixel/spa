@@ -10,6 +10,7 @@ const ArqueoFn = () => {
 
   const [turno, setTurno]           = React.useState(null);
   const [ventas, setVentas]         = React.useState([]);
+  const [ventaPagos, setVentaPagos] = React.useState([]);
   const [cuentas, setCuentas]       = React.useState([]);
   const [monedas, setMonedas]       = React.useState({});
   const [turnoColabs, setTurnoCol]  = React.useState([]);
@@ -32,6 +33,16 @@ const ArqueoFn = () => {
       sb.from('arqueos').select('*').eq('turno_id', turnoId),
     ]);
     if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
+
+    // Cargar venta_pagos asociados a estas ventas (pueden ser splits)
+    const ventaIds = (v.data||[]).map(x => x.id);
+    let pagos = [];
+    if (ventaIds.length > 0) {
+      const pp = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+      pagos = pp.data || [];
+    }
+    setVentaPagos(pagos);
+
     setTurno(t.data);
     setVentas(v.data || []);
     setCuentas(cu.data || []);
@@ -74,36 +85,76 @@ const ArqueoFn = () => {
     const cuentaMap = {};
     cuentas.forEach(c => cuentaMap[c.id] = c);
 
-    ventas.forEach(v => {
-      const cuenta = cuentaMap[v.cuenta_id];
-      if (!cuenta) return;
-      if (!map[v.cuenta_id]) map[v.cuenta_id] = {
-        cuenta_id: v.cuenta_id,
-        label: cuenta.label,
-        tipo: cuenta.tipo,
-        moneda: cuenta.moneda,
-        ventasTotal: 0,
-        comisionesPagadas: 0,
-        pendientes: 0,
-        nVentas: 0,
-      };
-      const b = map[v.cuenta_id];
-      b.ventasTotal += Number(v.precio || 0);
-      b.nVentas += 1;
+    // Agrupar venta_pagos por venta_id
+    const pagosByVenta = {};
+    ventaPagos.forEach(p => {
+      (pagosByVenta[p.venta_id] = pagosByVenta[p.venta_id] || []).push(p);
+    });
 
-      // Comisiones solo afectan cuentas EFECTIVO (las comisiones se pagan en efectivo de gaveta)
-      if (b.tipo === 'efectivo') {
-        const pagEjec = colabPagada[v.colaboradora_id];
-        const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
-        if (pagEjec) b.comisionesPagadas += comisionEjec;
-        else         b.pendientes += comisionEjec;
-        if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
-          const pagVend = colabPagada[v.vendedora_id];
-          const comisionVenta = Number(v.comision_venta_monto || 0);
-          if (pagVend) b.comisionesPagadas += comisionVenta;
-          else         b.pendientes += comisionVenta;
+    const ensureBucket = (cuentaId) => {
+      const cuenta = cuentaMap[cuentaId];
+      if (!cuenta) return null;
+      if (!map[cuentaId]) map[cuentaId] = {
+        cuenta_id: cuentaId, label: cuenta.label, tipo: cuenta.tipo, moneda: cuenta.moneda,
+        ventasTotal: 0, comisionesPagadas: 0, pendientes: 0, nVentas: 0,
+      };
+      return map[cuentaId];
+    };
+
+    ventas.forEach(v => {
+      const pagosV = pagosByVenta[v.id] || [];
+      const pagosServicio = pagosV.filter(p => p.tipo === 'servicio');
+      const pagosPropina  = pagosV.filter(p => p.tipo === 'propina');
+      const pagEjec  = colabPagada[v.colaboradora_id];
+      const pagVend  = v.vendedora_id && v.vendedora_id !== v.colaboradora_id ? colabPagada[v.vendedora_id] : null;
+      const comPct   = Number(v.comision_pct || 0);
+      const cvPct    = Number(v.comision_venta_pct || 0);
+
+      // Fallback legacy: si no hay rows en venta_pagos, usa v.cuenta_id + v.precio + v.propina
+      if (pagosServicio.length === 0) {
+        const b = ensureBucket(v.cuenta_id);
+        if (!b) return;
+        b.ventasTotal += Number(v.precio || 0);
+        b.nVentas += 1;
+        if (b.tipo === 'efectivo') {
+          const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
+          if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
+          if (pagVend) {
+            const comisionVenta = Number(v.comision_venta_monto || 0);
+            if (pagVend === true) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
+          }
         }
+        return;
       }
+
+      // Flujo nuevo: suma por cada pago en SU cuenta nativa (proporcional)
+      pagosServicio.forEach(p => {
+        const b = ensureBucket(p.cuenta_id);
+        if (!b) return;
+        b.ventasTotal += Number(p.monto);
+        if (b.tipo === 'efectivo') {
+          const comisionEjec = Number(p.monto) * comPct / 100;
+          if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
+          if (pagVend !== null) {
+            const comisionVenta = Number(p.monto) * cvPct / 100;
+            if (pagVend) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
+          }
+        }
+      });
+      // Contamos la venta una vez, en la cuenta de la primera línea de servicio
+      if (pagosServicio.length > 0) {
+        const b = ensureBucket(pagosServicio[0].cuenta_id);
+        if (b) b.nVentas += 1;
+      }
+
+      // Propinas: 100% va al terapeuta (sale de la cuenta)
+      pagosPropina.forEach(p => {
+        const b = ensureBucket(p.cuenta_id);
+        if (!b) return;
+        if (b.tipo === 'efectivo') {
+          if (pagEjec) b.comisionesPagadas += Number(p.monto); else b.pendientes += Number(p.monto);
+        }
+      });
     });
     Object.values(map).forEach(b => {
       b.netoEsperado = b.ventasTotal - b.comisionesPagadas;

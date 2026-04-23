@@ -323,6 +323,57 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   const [notas, setNotas]           = React.useState(venta?.notas || '');
   const [saving, setSaving]         = React.useState(false);
 
+  // ─── Split de pago del servicio (varias cuentas/monedas) ───
+  const [splitActivo, setSplitActivo] = React.useState(false);
+  const [splitLines, setSplitLines]   = React.useState([
+    {cuentaId: venta?.cuenta_id || cuentas[0]?.id || '', monto: ''},
+    {cuentaId: cuentas[1]?.id || cuentas[0]?.id || '', monto: ''},
+  ]);
+  // Propina puede dividirse también
+  const [splitPropActivo, setSplitPropActivo] = React.useState(false);
+  const [splitPropLines, setSplitPropLines]   = React.useState([
+    {cuentaId: venta?.cuenta_id || cuentas[0]?.id || '', monto: ''},
+  ]);
+
+  // Al editar venta ya guardada, traer sus pagos (si existen) para pre-poblar
+  React.useEffect(() => {
+    if (!editando || !venta?.id) return;
+    (async () => {
+      const {data} = await sb.from('venta_pagos').select('cuenta_id, tipo, monto, orden').eq('venta_id', venta.id).order('orden');
+      if (!data || data.length === 0) return;
+      const serv = data.filter(x => x.tipo === 'servicio');
+      const prop = data.filter(x => x.tipo === 'propina');
+      if (serv.length > 1) {
+        setSplitActivo(true);
+        setSplitLines(serv.map(s => ({cuentaId: s.cuenta_id, monto: String(s.monto)})));
+      }
+      if (prop.length > 1) {
+        setSplitPropActivo(true);
+        setSplitPropLines(prop.map(s => ({cuentaId: s.cuenta_id, monto: String(s.monto)})));
+      }
+    })();
+    // eslint-disable-next-line
+  }, [venta?.id]);
+
+  // Helpers para split lines
+  const addSplitLine = () => setSplitLines(l => [...l, {cuentaId: cuentas[0]?.id || '', monto: ''}]);
+  const rmSplitLine  = (i) => setSplitLines(l => l.filter((_,j) => j !== i));
+  const updSplitLine = (i, field, val) => setSplitLines(l => l.map((x,j) => j===i ? {...x, [field]: val} : x));
+
+  const addPropLine = () => setSplitPropLines(l => [...l, {cuentaId: cuentas[0]?.id || '', monto: ''}]);
+  const rmPropLine  = (i) => setSplitPropLines(l => l.filter((_,j) => j !== i));
+  const updPropLine = (i, field, val) => setSplitPropLines(l => l.map((x,j) => j===i ? {...x, [field]: val} : x));
+
+  // Cálculos: totales en MXN desde split lines
+  const getLineMxn = (line) => {
+    const c = cuentas.find(x => x.id === line.cuentaId);
+    const m = c ? monedas[c.moneda] : null;
+    const tcLine = m ? Number(m.tc_a_mxn) : 1;
+    return (parseFloat(line.monto) || 0) * tcLine;
+  };
+  const splitTotalMxn  = splitActivo ? splitLines.reduce((s,l) => s + getLineMxn(l), 0) : 0;
+  const splitPropTotal = splitPropActivo ? splitPropLines.reduce((s,l) => s + getLineMxn(l), 0) : 0;
+
   const servicio = servicios.find(s => s.id === servicioId);
   const canal    = canales.find(c => c.id === canalId);
   const cuenta   = cuentas.find(c => c.id === cuentaId);
@@ -353,9 +404,11 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     if (c) setPct(c.comision_default);
   };
 
-  const precioNum     = parseFloat(precio) || 0;
+  // Si split está activo, el "precio" efectivo es la suma de líneas convertidas a MXN
+  const precioBaseNum = parseFloat(precio) || 0;
+  const precioNum     = splitActivo ? splitTotalMxn : precioBaseNum;
   const pctNum        = parseFloat(comisionPct) || 0;
-  const propinaNum    = parseFloat(propina) || 0;
+  const propinaNum    = splitPropActivo ? splitPropTotal : (parseFloat(propina) || 0);
   const permiteCV     = !!(canal && canal.permite_comision_venta);
   const cvPctNum      = permiteCV ? (parseFloat(canal.comision_venta_pct)||0) : 0;
   const vendedoraSel  = vendedoraId && vendedoraId !== colabId ? colabs.find(c=>c.id===vendedoraId) : null;
@@ -376,33 +429,85 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     if (!servicioId)  return notify('Selecciona el servicio','err');
     if (!colabId)     return notify('Selecciona a quien ejecuta','err');
     if (!canalId)     return notify('Selecciona el canal','err');
-    if (!cuentaId)    return notify('Selecciona la cuenta donde cae el pago','err');
-    if (precioNum<=0) return notify('El precio debe ser mayor a 0','err');
     if (pctNum<0 || pctNum>100) return notify('El % de comisión debe estar entre 0 y 100','err');
 
+    // Validar split o cuenta única
+    if (splitActivo) {
+      if (splitLines.length < 2) return notify('Agrega al menos 2 líneas de pago o desactiva la división','err');
+      for (const l of splitLines) {
+        if (!l.cuentaId) return notify('Falta seleccionar cuenta en una línea','err');
+        if (!(parseFloat(l.monto) > 0)) return notify('Todas las líneas deben tener monto > 0','err');
+      }
+    } else {
+      if (!cuentaId)    return notify('Selecciona la cuenta donde cae el pago','err');
+      if (precioBaseNum<=0) return notify('El precio debe ser mayor a 0','err');
+    }
+    if (splitPropActivo) {
+      for (const l of splitPropLines) {
+        if (!l.cuentaId) return notify('Falta cuenta en una línea de propina','err');
+        if (!(parseFloat(l.monto) > 0)) return notify('Las líneas de propina deben tener monto > 0','err');
+      }
+    }
+
     setSaving(true);
+    // Si hay split: moneda principal = MXN (canonical), tc_momento = 1, cuenta_id = primera línea (referencia)
+    const cuentaPrincipal = splitActivo ? cuentas.find(c => c.id === splitLines[0].cuentaId) : cuenta;
+    const monedaPrincipal = splitActivo ? 'MXN' : cuenta.moneda;
+    const tcPrincipal     = splitActivo ? 1 : tc;
+
     const payload = {
       turno_id: turnoId,
       servicio_id: servicioId,
       colaboradora_id: colabId,
       canal_id: canalId,
-      cuenta_id: cuentaId,
-      precio: precioNum,
+      cuenta_id: cuentaPrincipal?.id || cuentaId,
+      precio: precioNum, // en MXN si hay split, o en moneda de cuenta si no
       duracion_min: parseInt(duracion) || null,
       comision_pct: pctNum,
       comision_monto: comisionMonto,
       propina: propinaNum,
-      moneda: cuenta.moneda,
-      tc_momento: tc,
+      moneda: monedaPrincipal,
+      tc_momento: tcPrincipal,
       notas: notas.trim() || null,
       vendedora_id: vendedoraSel ? vendedoraSel.id : null,
       comision_venta_pct: vendedoraSel ? cvPctNum : null,
       comision_venta_monto: vendedoraSel ? comisionVenta : null,
     };
-    let error;
-    if (editando) ({error} = await sb.from('ventas').update(payload).eq('id', venta.id));
-    else          ({error} = await sb.from('ventas').insert(payload));
+    let error, ventaId;
+    if (editando) {
+      ({error} = await sb.from('ventas').update(payload).eq('id', venta.id));
+      ventaId = venta.id;
+    } else {
+      const res = await sb.from('ventas').insert(payload).select('id').single();
+      error = res.error; ventaId = res.data?.id;
+    }
     if (error) { setSaving(false); return notify('Error: '+error.message,'err'); }
+
+    // Guardar venta_pagos: borrar existentes y reinsertar (más simple y confiable)
+    if (ventaId) {
+      await sb.from('venta_pagos').delete().eq('venta_id', ventaId);
+      const pagoRows = [];
+      if (splitActivo) {
+        splitLines.forEach((l, i) => pagoRows.push({
+          venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'servicio',
+          monto: parseFloat(l.monto), orden: i,
+        }));
+      } else {
+        pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'servicio', monto: precioBaseNum, orden: 0});
+      }
+      if (splitPropActivo) {
+        splitPropLines.forEach((l, i) => pagoRows.push({
+          venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'propina',
+          monto: parseFloat(l.monto), orden: i,
+        }));
+      } else if (propinaNum > 0) {
+        pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'propina', monto: propinaNum, orden: 0});
+      }
+      if (pagoRows.length > 0) {
+        const {error: pErr} = await sb.from('venta_pagos').insert(pagoRows);
+        if (pErr) { setSaving(false); return notify('Error guardando pagos: '+pErr.message,'err'); }
+      }
+    }
 
     // Upsert turno_colaboradoras (asegurar que ambas — ejecutor y vendedora — están en el turno)
     const tcRows = [{turno_id: turnoId, colaboradora_id: colabId}];
@@ -510,13 +615,48 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         </div>
       )}
 
-      {/* Fila 3: Cuenta + Duración */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,marginBottom:14}}>
+      {/* Fila 3: Cuenta(s) + Duración */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,marginBottom:14,alignItems:'flex-start'}}>
         <div>
-          <label style={labelStyle}>Cuenta donde cae el pago</label>
-          <select value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={fieldStyle}>
-            {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
-          </select>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+            <label style={{...labelStyle, marginBottom:0}}>{splitActivo ? 'Pagos del servicio · varias cuentas' : 'Cuenta donde cae el pago'}</label>
+            <label style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:11,color:'var(--ink-2)',cursor:'pointer',fontWeight:500}}>
+              <input type="checkbox" checked={splitActivo} onChange={e=>setSplitActivo(e.target.checked)}/>
+              Dividir pago
+            </label>
+          </div>
+          {!splitActivo ? (
+            <select value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={fieldStyle}>
+              {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
+            </select>
+          ) : (
+            <div style={{border:'1px solid var(--line-2)',borderRadius:8,padding:'10px',background:'var(--paper-sunk)'}}>
+              {splitLines.map((l, i) => {
+                const c = cuentas.find(x => x.id === l.cuentaId);
+                const mxn = getLineMxn(l);
+                return (
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 110px 30px',gap:6,marginBottom:6,alignItems:'center'}}>
+                    <select value={l.cuentaId} onChange={e=>updSplitLine(i,'cuentaId',e.target.value)} style={{...fieldStyle,padding:'7px 10px',fontSize:12}}>
+                      {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
+                    </select>
+                    <input type="number" step="0.01" min="0" value={l.monto} onChange={e=>updSplitLine(i,'monto',e.target.value)} placeholder="0" style={{...fieldStyle,padding:'7px 10px',fontSize:12,textAlign:'right'}} className="num"/>
+                    <button type="button" onClick={()=>rmSplitLine(i)} disabled={splitLines.length<=2}
+                      style={{background:'transparent',border:'none',cursor:splitLines.length<=2?'not-allowed':'pointer',color:'var(--ink-3)',opacity:splitLines.length<=2?.3:1}}>
+                      <Icon name="trash" size={13}/>
+                    </button>
+                  </div>
+                );
+              })}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,paddingTop:8,borderTop:'1px dashed var(--line-1)'}}>
+                <button type="button" onClick={addSplitLine} style={{background:'transparent',border:'none',color:'var(--clay)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+                  + Agregar línea
+                </button>
+                <span className="num" style={{fontSize:12,color:'var(--ink-2)'}}>
+                  Total: <strong>${splitTotalMxn.toLocaleString('es-MX',{maximumFractionDigits:0})} MXN</strong>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <label style={labelStyle}>Duración (min)</label>
@@ -527,21 +667,57 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
       {/* Fila 4: Precio + Propina */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14,padding:'14px',background:'var(--paper-sunk)',borderRadius:10,border:'1px solid var(--line-2)'}}>
         <div>
-          <label style={labelStyle}>Precio {moneda && `(${moneda.codigo})`}</label>
+          <label style={labelStyle}>Precio {splitActivo ? '(suma de líneas, MXN)' : (moneda && `(${moneda.codigo})`)}</label>
           <div style={{position:'relative'}}>
             <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:18,fontFamily:'var(--serif)'}}>$</span>
-            <input type="number" step="0.01" min="0" value={precio} onChange={e=>setPrecio(e.target.value)} placeholder="0.00" style={{...fieldStyle,paddingLeft:28,fontSize:18,fontWeight:600,fontFamily:'var(--serif)',textAlign:'right'}} className="num"/>
+            <input type="number" step="0.01" min="0"
+              value={splitActivo ? splitTotalMxn.toFixed(2) : precio}
+              onChange={e=>!splitActivo && setPrecio(e.target.value)}
+              disabled={splitActivo}
+              placeholder="0.00"
+              style={{...fieldStyle,paddingLeft:28,fontSize:18,fontWeight:600,fontFamily:'var(--serif)',textAlign:'right',opacity:splitActivo?.6:1,cursor:splitActivo?'not-allowed':'auto'}} className="num"/>
           </div>
-          {moneda && moneda.codigo !== 'MXN' && precioNum>0 && (
+          {!splitActivo && moneda && moneda.codigo !== 'MXN' && precioNum>0 && (
             <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4,textAlign:'right'}} className="num">≈ ${(precioNum*tc).toLocaleString('es-MX',{maximumFractionDigits:0})} MXN (TC {tc.toFixed(2)})</div>
           )}
         </div>
         <div>
-          <label style={labelStyle}>Propina (opcional) · 100% al terapeuta</label>
-          <div style={{position:'relative'}}>
-            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:14}}>$</span>
-            <input type="number" step="0.01" min="0" value={propina} onChange={e=>setPropina(e.target.value)} placeholder="0" style={{...fieldStyle,paddingLeft:22,textAlign:'right'}} className="num"/>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+            <label style={{...labelStyle, marginBottom:0}}>Propina {splitPropActivo ? '(en MXN)' : '(opcional)'} · 100% al terapeuta</label>
+            <label style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:10.5,color:'var(--ink-2)',cursor:'pointer',fontWeight:500}}>
+              <input type="checkbox" checked={splitPropActivo} onChange={e=>setSplitPropActivo(e.target.checked)}/>
+              Dividir
+            </label>
           </div>
+          {!splitPropActivo ? (
+            <div style={{position:'relative'}}>
+              <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:14}}>$</span>
+              <input type="number" step="0.01" min="0" value={propina} onChange={e=>setPropina(e.target.value)} placeholder="0" style={{...fieldStyle,paddingLeft:22,textAlign:'right'}} className="num"/>
+            </div>
+          ) : (
+            <div style={{border:'1px solid var(--line-2)',borderRadius:8,padding:'8px',background:'var(--paper-raised)'}}>
+              {splitPropLines.map((l, i) => (
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 28px',gap:4,marginBottom:5,alignItems:'center'}}>
+                  <select value={l.cuentaId} onChange={e=>updPropLine(i,'cuentaId',e.target.value)} style={{...fieldStyle,padding:'6px 8px',fontSize:11}}>
+                    {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
+                  </select>
+                  <input type="number" step="0.01" min="0" value={l.monto} onChange={e=>updPropLine(i,'monto',e.target.value)} placeholder="0" style={{...fieldStyle,padding:'6px 8px',fontSize:11,textAlign:'right'}} className="num"/>
+                  <button type="button" onClick={()=>rmPropLine(i)} disabled={splitPropLines.length<=1}
+                    style={{background:'transparent',border:'none',cursor:splitPropLines.length<=1?'not-allowed':'pointer',color:'var(--ink-3)',opacity:splitPropLines.length<=1?.3:1}}>
+                    <Icon name="trash" size={11}/>
+                  </button>
+                </div>
+              ))}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4,fontSize:10.5}}>
+                <button type="button" onClick={addPropLine} style={{background:'transparent',border:'none',color:'var(--clay)',fontWeight:600,cursor:'pointer',fontFamily:'inherit',fontSize:11}}>
+                  + Línea
+                </button>
+                <span className="num" style={{color:'var(--ink-2)'}}>
+                  <strong>${splitPropTotal.toLocaleString('es-MX',{maximumFractionDigits:0})} MXN</strong>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
