@@ -53,6 +53,7 @@ const DashboardFn = () => {
   const [data, setData]         = React.useState(null);
   const [dataPrev, setDataPrev] = React.useState(null);
   const [tendencia, setTendencia] = React.useState(null);
+  const [cfgFiscal, setCfgFiscal] = React.useState(null);
 
   // Determinar rango efectivo
   const rango = React.useMemo(() => {
@@ -78,12 +79,13 @@ const DashboardFn = () => {
     (async () => {
       setLoading(true);
       const {desde, hasta} = rango;
-      const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ] = await Promise.all([
+      const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ] = await Promise.all([
         sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('cuentas').select('*').order('orden'),
         sb.from('monedas').select('*'),
+        sb.from('config_fiscal').select('*').eq('id',1).maybeSingle(),
       ]);
       if (!vivo) return;
       const turnoIds = (turnosQ.data||[]).map(t => t.id);
@@ -94,6 +96,7 @@ const DashboardFn = () => {
       }
       const monedasMap = {};
       (monedasQ.data||[]).forEach(m => monedasMap[m.codigo] = m);
+      setCfgFiscal(cfgQ.data || null);
       setData({
         ventas: ventasQ.data || [], gastos: gastosQ.data || [],
         turnos: turnosQ.data || [], cuentas: cuentasQ.data || [],
@@ -337,14 +340,64 @@ const DashboardFn = () => {
     });
     const encargadasOrd = Object.values(porEncargada).sort((a,b) => b.ventas - a.ventas);
 
+    // ─── Cálculo fiscal (si config_fiscal.activo) ───
+    let fiscal = null;
+    if (cfgFiscal?.activo) {
+      const cuentasFiscalesIds = new Set(cuentas.filter(c => c.es_fiscal).map(c => c.id));
+      const ivaPctDefault = Number(cfgFiscal.iva_pct_default || 16);
+      const isrPct = Number(cfgFiscal.isr_pct || 0);
+
+      // Ventas en cuentas fiscales (se asume precio incluye IVA)
+      const ventasFiscales = ventas.filter(v => cuentasFiscalesIds.has(v.cuenta_id));
+      const ventasNoFiscales = ventas.filter(v => !cuentasFiscalesIds.has(v.cuenta_id));
+      const ventasGravadasMxn = ventasFiscales.reduce((a,v) => a + Number(v.precio_mxn||0), 0);
+      const ventasNoFiscalesMxn = ventasNoFiscales.reduce((a,v) => a + Number(v.precio_mxn||0), 0);
+      const ivaCobrado = ventasGravadasMxn * (ivaPctDefault / (100 + ivaPctDefault));
+      const ventasGravadasSinIva = ventasGravadasMxn - ivaCobrado;
+
+      // Gastos facturables (IVA acreditable + base deducible)
+      const gastosFacturables = gastos.filter(g => g.es_facturable);
+      const gastosNoFacturables = gastos.filter(g => !g.es_facturable);
+      const gastosFactMxn = gastosFacturables.reduce((a,g) => a + Number(g.monto_mxn||0), 0);
+      const gastosNoFactMxn = gastosNoFacturables.reduce((a,g) => a + Number(g.monto_mxn||0), 0);
+      // IVA acreditable: usar iva_importe (la vista ya resuelve iva_monto vs iva_pct × tc_momento)
+      const ivaAcreditable = gastosFacturables.reduce((a,g) => {
+        const imp = Number(g.iva_importe||0);
+        const tc = Number(g.tc_momento||1);
+        return a + imp * tc;
+      }, 0);
+      const gastosFactSinIva = gastosFactMxn - ivaAcreditable;
+
+      const ivaAPagar = ivaCobrado - ivaAcreditable; // puede ser negativo si tienes saldo a favor
+
+      const utilidadFiscal = ventasGravadasSinIva - gastosFactSinIva;
+      const isrEstimado = Math.max(0, utilidadFiscal * isrPct / 100);
+
+      // Utilidad real del dueño: neto contable completo − IVA a pagar − ISR
+      const netoContable = totalVentas - totalComis - totalGastos;
+      const utilidadReal = netoContable - Math.max(0, ivaAPagar) - isrEstimado;
+
+      fiscal = {
+        cfg: cfgFiscal,
+        ventasGravadasMxn, ventasNoFiscalesMxn,
+        ivaCobrado, ventasGravadasSinIva,
+        gastosFactMxn, gastosNoFactMxn,
+        ivaAcreditable, gastosFactSinIva,
+        ivaAPagar,
+        utilidadFiscal, isrEstimado, isrPct,
+        netoContable, utilidadReal,
+      };
+    }
+
     return {
       totalVentas, totalComis, totalPropinas, totalGastos, netoSpa,
       nTurnos, nServicios, tickProm, difArqueos,
       flujoPorCuenta, serieChart, canalesOrd, categoriasOrd,
       colabsOrd, serviciosOrd, proveedoresOrd,
       turnosOrd, encargadasOrd,
+      fiscal,
     };
-  }, [data, rango]);
+  }, [data, rango, cfgFiscal]);
 
   // Drill-down modal state
   const [drillDown, setDrillDown] = React.useState(null);
@@ -563,6 +616,9 @@ const DashboardFn = () => {
               <KpiCard label="Ticket promedio" value={derivado.tickProm} color="var(--ink-0)" sub={`${derivado.nTurnos} turnos`}/>
               <KpiCard label="Dif. arqueos" value={derivado.difArqueos} color={Math.abs(derivado.difArqueos) < 1 ? 'var(--moss)' : (derivado.difArqueos > 0 ? 'var(--moss)' : '#b73f5e')} sub={Math.abs(derivado.difArqueos) < 1 ? 'cuadra' : (derivado.difArqueos > 0 ? 'sobrante' : 'faltante')} signed/>
             </div>
+
+            {/* Sección Fiscal (solo si config_fiscal.activo) */}
+            {derivado.fiscal && <FiscalSection f={derivado.fiscal}/>}
 
             {/* Chart: Ventas vs Gastos */}
             <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:20,marginBottom:20}}>
@@ -1116,4 +1172,92 @@ const ChartDaily = ({serie}) => {
   return <canvas ref={canvasRef}/>;
 };
 
-Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia, DrillDownModal, DrillVentasTable, DrillGastosTable, RankingEncargadas, TurnosTable });
+// ─── Sección Cálculo Fiscal Estimado ───
+const FiscalSection = ({f}) => {
+  const fmt = (n, signed = false) => {
+    const abs = Math.abs(n);
+    const prefix = signed && n < 0 ? '−' : (signed && n > 0 ? '+' : '');
+    return `${prefix}$${Math.round(abs).toLocaleString('es-MX')}`;
+  };
+  const regimenLabel = {
+    resico_pm: 'RESICO PM', rgl: 'Régimen General', resico_pf: 'RESICO PF',
+    pfae: 'PF Actividad Empresarial', custom: 'Custom',
+  }[f.cfg.regimen] || 'Sin régimen';
+
+  return (
+    <div style={{background:'linear-gradient(135deg, #fef9ef 0%, #fcecd9 100%)',border:'1px solid #ecd49a',borderRadius:14,padding:20,marginBottom:20}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14,gap:10,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontFamily:'var(--serif)',fontSize:17,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,display:'flex',alignItems:'center',gap:10}}>
+            <Icon name="shield" size={16} color="var(--clay)"/>
+            Cálculo fiscal estimado
+          </div>
+          <div style={{fontSize:11,color:'#7a4e10',marginTop:4}}>{regimenLabel} · ISR {f.isrPct}% · {f.cfg.nombre_empresa || f.cfg.rfc || 'Sin nombre'}</div>
+        </div>
+        <div style={{fontSize:10,color:'#7a4e10',fontStyle:'italic',maxWidth:280,textAlign:'right'}}>⚠ Estimado · no reemplaza asesoría contable</div>
+      </div>
+
+      {/* Grid: IVA + ISR lado a lado */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',gap:14,marginBottom:14}}>
+        {/* Cuadro IVA */}
+        <div style={{background:'rgba(254,253,249,.85)',borderRadius:10,padding:'14px 16px',border:'1px solid #ecd49a'}}>
+          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--clay)',marginBottom:10}}>IVA</div>
+          <FilaFiscal label="Ventas gravadas (fiscales)" val={`+${fmt(f.ventasGravadasMxn)}`} muted/>
+          <FilaFiscal label={`IVA cobrado (${f.cfg.iva_pct_default}%)`} val={`+${fmt(f.ivaCobrado)}`} color="var(--moss)"/>
+          <FilaFiscal label="IVA acreditable (gastos fact.)" val={`−${fmt(f.ivaAcreditable)}`} color="var(--clay)"/>
+          <div style={{borderTop:'1.5px solid #ecd49a',marginTop:8,paddingTop:8,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-1)'}}>{f.ivaAPagar >= 0 ? 'IVA a pagar al SAT' : 'IVA a favor'}</span>
+            <span className="num" style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:700,color: f.ivaAPagar >= 0 ? '#b73f5e' : 'var(--moss)'}}>{fmt(Math.abs(f.ivaAPagar))}</span>
+          </div>
+        </div>
+
+        {/* Cuadro ISR */}
+        <div style={{background:'rgba(254,253,249,.85)',borderRadius:10,padding:'14px 16px',border:'1px solid #ecd49a'}}>
+          <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--clay)',marginBottom:10}}>ISR</div>
+          <FilaFiscal label="Base gravable (ventas − IVA)" val={`+${fmt(f.ventasGravadasSinIva)}`} muted/>
+          <FilaFiscal label="Gastos deducibles (sin IVA)" val={`−${fmt(f.gastosFactSinIva)}`} color="var(--clay)"/>
+          <FilaFiscal label="Utilidad fiscal" val={fmt(f.utilidadFiscal)} bold/>
+          <div style={{borderTop:'1.5px solid #ecd49a',marginTop:8,paddingTop:8,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-1)'}}>ISR estimado ({f.isrPct}%)</span>
+            <span className="num" style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:700,color:'#b73f5e'}}>{fmt(f.isrEstimado)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Utilidad real */}
+      <div style={{background:'rgba(107,125,74,.1)',border:'1.5px solid var(--moss)',borderRadius:10,padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',color:'var(--moss)'}}>Utilidad real después de impuestos</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:3}}>Neto contable {fmt(f.netoContable)} − IVA a pagar {fmt(Math.max(0,f.ivaAPagar))} − ISR {fmt(f.isrEstimado)}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div className="num" style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:700,color:'var(--moss)',letterSpacing:-.6,lineHeight:1}}>{fmt(f.utilidadReal)}</div>
+          {f.netoContable > 0 && (
+            <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>
+              {Math.round(f.utilidadReal / f.netoContable * 100)}% del neto contable · el resto se va en impuestos
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Comparativa rápida */}
+      {f.ventasNoFiscalesMxn > 0 && (
+        <div style={{marginTop:10,padding:'8px 12px',background:'rgba(255,255,255,.5)',borderRadius:6,fontSize:11,color:'#7a4e10',display:'flex',gap:14,flexWrap:'wrap'}}>
+          <span>Ventas NO fiscales: <strong>{fmt(f.ventasNoFiscalesMxn)}</strong> (no se declaran)</span>
+          {f.gastosNoFactMxn > 0 && <span>Gastos NO facturables: <strong>{fmt(f.gastosNoFactMxn)}</strong> (no deducibles)</span>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Fila simple dentro de los cuadros fiscales
+const FilaFiscal = ({label, val, color, muted, bold}) => (
+  <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0',fontSize:12.5}}>
+    <span style={{color: muted ? 'var(--ink-3)' : 'var(--ink-2)'}}>{label}</span>
+    <span className="num" style={{fontWeight:bold ? 700 : 600,color: color || (muted ? 'var(--ink-2)' : 'var(--ink-1)')}}>{val}</span>
+  </div>
+);
+
+Object.assign(window, { Dashboard: DashboardFn, KpiCard, FlujoCuentaTable, BreakdownCard, ChartDaily, TopColabsTable, TopServiciosTable, ChartTendencia, DrillDownModal, DrillVentasTable, DrillGastosTable, RankingEncargadas, TurnosTable, FiscalSection, FilaFiscal });
