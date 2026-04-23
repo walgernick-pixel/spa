@@ -79,15 +79,24 @@ const DashboardFn = () => {
     (async () => {
       setLoading(true);
       const {desde, hasta} = rango;
-      const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ] = await Promise.all([
+      const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ, perfilesQ] = await Promise.all([
         sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('cuentas').select('*').order('orden'),
         sb.from('monedas').select('*'),
         sb.from('config_fiscal').select('*').eq('id',1).maybeSingle(),
+        sb.from('perfiles').select('id, nombre_display, username'),
       ]);
       if (!vivo) return;
+      // Lookup cliente: si la vista no trajo nombre del encargado, lo sacamos de perfiles
+      const perfilesMap = {};
+      (perfilesQ.data || []).forEach(p => { perfilesMap[p.id] = p; });
+      (turnosQ.data || []).forEach(t => {
+        if (!t.encargada_nombre && t.encargada_id && perfilesMap[t.encargada_id]) {
+          t.encargada_nombre = perfilesMap[t.encargada_id].nombre_display;
+        }
+      });
       const turnoIds = (turnosQ.data||[]).map(t => t.id);
       let arqueos = [];
       if (turnoIds.length > 0) {
@@ -321,7 +330,7 @@ const DashboardFn = () => {
       return (b.hora_inicio||'').localeCompare(a.hora_inicio||'');
     });
 
-    // Ranking por encargada (quién vendió más)
+    // Ranking por encargado (quién vendió más)
     const porEncargada = {};
     turnos.forEach(t => {
       const k = t.encargada_id || '_sin';
@@ -333,7 +342,7 @@ const DashboardFn = () => {
       porEncargada[k].comisionesVenta += Number(t.comisiones_venta_mxn || 0);
       porEncargada[k].nServicios += Number(t.n_servicios || 0);
     });
-    // Los gastos no se asocian directo a encargada (por ahora). Dejamos 0.
+    // Los gastos no se asocian directo a encargado (por ahora). Dejamos 0.
     Object.values(porEncargada).forEach(e => {
       e.neto = e.ventas - e.comisiones - e.comisionesVenta;
       e.promedioPorTurno = e.nTurnos > 0 ? e.ventas / e.nTurnos : 0;
@@ -686,10 +695,10 @@ const DashboardFn = () => {
               )}
             </div>
 
-            {/* Ranking por encargada + Turnos del periodo */}
+            {/* Ranking por encargado + Turnos del periodo */}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(360px, 1fr))',gap:16,marginBottom:20}}>
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:18}}>
-                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Ranking por encargada</div>
+                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Ranking por encargado</div>
                 <div style={{fontSize:11,color:'var(--ink-3)',marginBottom:12}}>Quién abrió los turnos y cuánto vendió</div>
                 {derivado.encargadasOrd.length === 0 ? (
                   <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin turnos en este periodo</div>
@@ -877,7 +886,7 @@ const DrillGastosTable = ({items, monedas}) => {
   );
 };
 
-// ─── Ranking por encargada ───
+// ─── Ranking por encargado ───
 const RankingEncargadas = ({encargadas}) => {
   const max = Math.max(...encargadas.map(e => e.ventas));
   return (
@@ -946,7 +955,7 @@ const TurnosTable = ({turnos, arqueos, monedas}) => {
   return (
     <div style={{maxHeight:360,overflowY:'auto'}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 100px 100px 80px',gap:8,padding:'6px 8px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.3,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)',position:'sticky',top:0,background:'var(--paper-raised)'}}>
-        <div>Fecha · encargada</div>
+        <div>Fecha · encargado</div>
         <div className="num" style={{textAlign:'right'}}>Ventas</div>
         <div className="num" style={{textAlign:'right'}}>Neto</div>
         <div style={{textAlign:'right'}}>Arqueo</div>
