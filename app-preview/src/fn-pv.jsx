@@ -10,6 +10,7 @@ const PVTurnoFn = () => {
 
   const [turno, setTurno]           = React.useState(null);
   const [ventas, setVentas]         = React.useState([]);
+  const [ventaPagos, setVentaPagos] = React.useState([]);
   const [servicios, setServicios]   = React.useState([]);
   const [canales, setCanales]       = React.useState([]);
   const [colabs, setColabs]         = React.useState([]);
@@ -39,6 +40,16 @@ const PVTurnoFn = () => {
     if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
     setTurno(t.data);
     setVentas(v.data || []);
+
+    // Cargar venta_pagos (splits) en paralelo
+    const ventaIds = (v.data || []).map(x => x.id);
+    if (ventaIds.length > 0) {
+      const {data: pagos} = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+      setVentaPagos(pagos || []);
+    } else {
+      setVentaPagos([]);
+    }
+
     setServicios(s.data || []);
     setCanales(ca.data || []);
     setColabs(co.data || []);
@@ -300,7 +311,7 @@ const PVTurnoFn = () => {
         ) : (
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {ventasPorColab.map(c => (
-              <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas}
+              <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas} ventaPagos={ventaPagos}
                 turnoAbierto={turno.estado==='abierto'}
                 globalOpen={allBlocksOpen}
                 onTogglePago={()=>togglePago(c.colaboradora_id)}

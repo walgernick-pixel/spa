@@ -103,7 +103,7 @@ const FirmaModal = ({colab, monedas, onSave, onCancel}) => {
 
 
 
-const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, onTogglePago, onFirmar, onDelVenta, onEditVenta}) => {
+const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], turnoAbierto, globalOpen, onTogglePago, onFirmar, onDelVenta, onEditVenta}) => {
   const [open, setOpen] = React.useState(true);
   // Sincroniza con el toggle global (colapsar/expandir todo)
   React.useEffect(() => {
@@ -115,14 +115,28 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
   const ejecutadas = c.ventasEjecutadas || c.ventas || [];
   const vendidas   = c.ventasVendidas || [];
 
-  // Agrupar TODO por CUENTA (no por moneda) — igual que arqueo
+  // Mapa venta_id → pagos, y helper de cuenta lookup
+  const pagosByVenta = React.useMemo(() => {
+    const m = {};
+    ventaPagos.forEach(p => { (m[p.venta_id] = m[p.venta_id] || []).push(p); });
+    return m;
+  }, [ventaPagos]);
+  const cuentaById = React.useMemo(() => {
+    const m = {};
+    cuentas.forEach(x => { m[x.id] = x; });
+    return m;
+  }, [cuentas]);
+
+  // Agrupar TODO por CUENTA usando venta_pagos (soporta split)
   const porCuenta = {};
-  const ensureC = (v) => {
-    if (!porCuenta[v.cuenta_id]) porCuenta[v.cuenta_id] = {
-      cuenta_id: v.cuenta_id,
-      cuenta: v.cuenta,
-      cuenta_tipo: v.cuenta_tipo,
-      moneda: v.moneda,
+  const ensureC = (cuentaId) => {
+    const cuenta = cuentaById[cuentaId];
+    if (!cuenta) return null;
+    if (!porCuenta[cuentaId]) porCuenta[cuentaId] = {
+      cuenta_id: cuentaId,
+      cuenta: cuenta.label,
+      cuenta_tipo: cuenta.tipo,
+      moneda: cuenta.moneda,
       ejecutadas: [],
       vendidas: [],
       comisionEjec: 0,
@@ -130,19 +144,84 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
       comisionVenta: 0,
       totalVentaEjec: 0,
     };
+    return porCuenta[cuentaId];
   };
+
   ejecutadas.forEach(v => {
-    ensureC(v);
-    porCuenta[v.cuenta_id].ejecutadas.push(v);
-    porCuenta[v.cuenta_id].comisionEjec    += Number(v.comision_monto || 0);
-    porCuenta[v.cuenta_id].propina         += Number(v.propina || 0);
-    porCuenta[v.cuenta_id].totalVentaEjec  += Number(v.precio || 0);
+    const pagosV = pagosByVenta[v.id] || [];
+    const servicios = pagosV.filter(p => p.tipo === 'servicio');
+    const propinas  = pagosV.filter(p => p.tipo === 'propina');
+    const pct = Number(v.comision_pct || 0);
+
+    if (servicios.length === 0) {
+      // Legacy (sin venta_pagos)
+      const b = ensureC(v.cuenta_id);
+      if (!b) return;
+      b.ejecutadas.push(v);
+      b.totalVentaEjec += Number(v.precio || 0);
+      b.comisionEjec   += Number(v.comision_monto || 0);
+      b.propina        += Number(v.propina || 0);
+      return;
+    }
+
+    // Split: un renglón por cada línea de pago, con montos proporcionales
+    servicios.forEach((p, i) => {
+      const b = ensureC(p.cuenta_id);
+      if (!b) return;
+      const comisionLinea = Number(p.monto) * pct / 100;
+      // Propina de esta misma línea (misma cuenta, mismo orden si existe)
+      const propLinea = (propinas.find(pp => pp.cuenta_id === p.cuenta_id && pp.orden === p.orden)
+                        || propinas.find(pp => pp.cuenta_id === p.cuenta_id && !pp._used));
+      let propMonto = 0;
+      if (propLinea) { propMonto = Number(propLinea.monto); propLinea._used = true; }
+
+      b.ejecutadas.push({
+        ...v,
+        _splitIdx: i,
+        precio: Number(p.monto),
+        comision_monto: comisionLinea,
+        propina: propMonto,
+        moneda: cuentaById[p.cuenta_id]?.moneda,
+        cuenta: cuentaById[p.cuenta_id]?.label,
+      });
+      b.totalVentaEjec += Number(p.monto);
+      b.comisionEjec   += comisionLinea;
+      b.propina        += propMonto;
+    });
+    // Propinas huérfanas (sin línea de servicio asociada) — raras, pero por si acaso
+    propinas.filter(pp => !pp._used).forEach(pp => {
+      const b = ensureC(pp.cuenta_id);
+      if (b) b.propina += Number(pp.monto);
+    });
   });
+
   vendidas.forEach(v => {
-    ensureC(v);
-    porCuenta[v.cuenta_id].vendidas.push(v);
-    porCuenta[v.cuenta_id].comisionVenta += Number(v.comision_venta_monto || 0);
+    const pagosV = pagosByVenta[v.id] || [];
+    const servicios = pagosV.filter(p => p.tipo === 'servicio');
+    const cvPct = Number(v.comision_venta_pct || 0);
+    if (servicios.length === 0) {
+      const b = ensureC(v.cuenta_id);
+      if (!b) return;
+      b.vendidas.push(v);
+      b.comisionVenta += Number(v.comision_venta_monto || 0);
+      return;
+    }
+    servicios.forEach((p, i) => {
+      const b = ensureC(p.cuenta_id);
+      if (!b) return;
+      const cvLinea = Number(p.monto) * cvPct / 100;
+      b.vendidas.push({
+        ...v,
+        _splitIdx: i,
+        precio: Number(p.monto),
+        comision_venta_monto: cvLinea,
+        moneda: cuentaById[p.cuenta_id]?.moneda,
+        cuenta: cuentaById[p.cuenta_id]?.label,
+      });
+      b.comisionVenta += cvLinea;
+    });
   });
+
   Object.values(porCuenta).forEach(cc => {
     cc.totalRecibir = cc.comisionEjec + cc.propina + cc.comisionVenta;
   });
@@ -174,9 +253,15 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
             {vendidas.length>0 && <span style={{color:'var(--ink-blue)',fontWeight:500}}>{vendidas.length} {vendidas.length===1?'venta':'ventas'} a otras</span>}
           </div>
         </div>
-        <div style={{textAlign:'right',marginRight:10}}>
-          <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.3,textTransform:'uppercase',marginBottom:2}}>A recibir</div>
-          <div className="num" style={{fontSize:15,fontWeight:700,color:'var(--clay)',fontFamily:'var(--serif)'}}>${Math.round(c.comisionMxn + c.propinaMxn).toLocaleString('es-MX')}</div>
+        <div style={{textAlign:'right',marginRight:10,display:'flex',gap:16,alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.3,textTransform:'uppercase',marginBottom:2}}>Vendido</div>
+            <div className="num" style={{fontSize:13,fontWeight:600,color:'var(--ink-1)',fontFamily:'var(--serif)'}}>${Math.round(c.totalMxn || 0).toLocaleString('es-MX')}</div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:600,letterSpacing:.3,textTransform:'uppercase',marginBottom:2}}>A recibir</div>
+            <div className="num" style={{fontSize:15,fontWeight:700,color:'var(--clay)',fontFamily:'var(--serif)'}}>${Math.round(c.comisionMxn + c.propinaMxn).toLocaleString('es-MX')}</div>
+          </div>
         </div>
         {turnoAbierto && (
           <div style={{display:'flex',alignItems:'center',gap:6}} onClick={e=>e.stopPropagation()}>
@@ -251,8 +336,8 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
                     {grupo.vendidas.length > 0 && (
                       <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',padding:'7px 14px 4px',background:'var(--paper-sunk)'}}>Servicios ejecutados</div>
                     )}
-                    {grupo.ejecutadas.map(v => (
-                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 100px 90px 80px 60px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
+                    {grupo.ejecutadas.map((v,idx) => (
+                      <div key={`${v.id}-${v._splitIdx ?? 'x'}-e${idx}`} style={{display:'grid',gridTemplateColumns:'1fr 100px 90px 80px 60px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
                           <div style={{fontWeight:600,color:'var(--ink-0)'}}>{v.servicio}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
@@ -279,8 +364,8 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, turnoAbierto, globalOpen, o
                 {grupo.vendidas.length > 0 && (
                   <div style={{background:'rgba(55,138,221,.04)'}}>
                     <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Ventas hechas a otras</div>
-                    {grupo.vendidas.map(v => (
-                      <div key={v.id} style={{display:'grid',gridTemplateColumns:'1fr 100px 110px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
+                    {grupo.vendidas.map((v,idx) => (
+                      <div key={`${v.id}-${v._splitIdx ?? 'x'}-v${idx}`} style={{display:'grid',gridTemplateColumns:'1fr 100px 110px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
                           <div style={{fontWeight:600,color:'var(--ink-0)'}}>{v.servicio}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
@@ -311,10 +396,10 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     const pagadasSet = new Set(colabsPagadasIds);
     return colabs.filter(c => !pagadasSet.has(c.id) || (editando && venta.colaboradora_id === c.id));
   },[colabs, colabsPagadasIds, editando, venta]);
-  const [servicioId, setServicio]   = React.useState(venta?.servicio_id || servicios[0]?.id || '');
-  const [colabId, setColab]         = React.useState(venta?.colaboradora_id || colabsDisponibles[0]?.id || '');
-  const [canalId, setCanal]         = React.useState(venta?.canal_id || canales[0]?.id || '');
-  const [cuentaId, setCuenta]       = React.useState(venta?.cuenta_id || cuentas[0]?.id || '');
+  const [servicioId, setServicio]   = React.useState(venta?.servicio_id || '');
+  const [colabId, setColab]         = React.useState(venta?.colaboradora_id || '');
+  const [canalId, setCanal]         = React.useState(venta?.canal_id || '');
+  const [cuentaId, setCuenta]       = React.useState(venta?.cuenta_id || '');
   const [precio, setPrecio]         = React.useState(venta?.precio || '');
   const [duracion, setDuracion]     = React.useState(venta?.duracion_min || '');
   const [comisionPct, setPct]       = React.useState(venta?.comision_pct ?? '');
@@ -553,12 +638,14 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         <div>
           <label style={labelStyle}>Servicio</label>
           <select value={servicioId} onChange={e=>setServicio(e.target.value)} style={fieldStyle}>
+            <option value="">— Selecciona un servicio —</option>
             {servicios.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         <div>
           <label style={labelStyle}>Ejecuta</label>
           <select value={colabId} onChange={e=>setColab(e.target.value)} style={fieldStyle}>
+            <option value="">— Selecciona a quien ejecuta —</option>
             {colabsDisponibles.map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
           </select>
           {colabsPagadasIds.length > 0 && <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4}}>{colabsPagadasIds.length} {colabsPagadasIds.length>1?'personas':'persona'} ya {colabsPagadasIds.length>1?'pagadas':'pagada'} (oculta{colabsPagadasIds.length>1?'s':''}). Desmarca el pago para usarla.</div>}
@@ -570,6 +657,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         <div>
           <label style={labelStyle}>Canal de venta</label>
           <select value={canalId} onChange={e=>cambiarCanal(e.target.value)} style={fieldStyle}>
+            <option value="">— Selecciona un canal —</option>
             {canales.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </div>
@@ -621,6 +709,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           </div>
           {!splitActivo ? (
             <select value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={fieldStyle}>
+              <option value="">— Selecciona una cuenta —</option>
               {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
             </select>
           ) : (
