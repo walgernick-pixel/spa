@@ -225,7 +225,7 @@ const FormCanal = ({canal, onSave, onCancel}) => {
                 <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:13,fontWeight:600}}>%</span>
               </div>
               <div style={{fontSize:11,color:'#7a4e10',lineHeight:1.4,flex:1}}>
-                Ejemplo: venta $1,000 → terapeuta que ejecuta recibe <strong>{parseFloat(comisionDefault)||0}%</strong> (${((parseFloat(comisionDefault)||0)*10).toLocaleString('es-MX')}), vendedora recibe <strong>{parseFloat(cvPct)||0}%</strong> (${((parseFloat(cvPct)||0)*10).toLocaleString('es-MX')}), spa se queda con <strong>{Math.max(0,100-(parseFloat(comisionDefault)||0)-(parseFloat(cvPct)||0))}%</strong>.
+                Ejemplo: venta $1,000 → terapeuta que ejecuta recibe <strong>{parseFloat(comisionDefault)||0}%</strong> (${((parseFloat(comisionDefault)||0)*10).toLocaleString('es-MX')}), quien vende recibe <strong>{parseFloat(cvPct)||0}%</strong> (${((parseFloat(cvPct)||0)*10).toLocaleString('es-MX')}), spa se queda con <strong>{Math.max(0,100-(parseFloat(comisionDefault)||0)-(parseFloat(cvPct)||0))}%</strong>.
               </div>
             </div>
           </div>

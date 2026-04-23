@@ -374,7 +374,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
 
   const guardar = async () => {
     if (!servicioId)  return notify('Selecciona el servicio','err');
-    if (!colabId)     return notify('Selecciona la colaboradora','err');
+    if (!colabId)     return notify('Selecciona a quien ejecuta','err');
     if (!canalId)     return notify('Selecciona el canal','err');
     if (!cuentaId)    return notify('Selecciona la cuenta donde cae el pago','err');
     if (precioNum<=0) return notify('El precio debe ser mayor a 0','err');
@@ -422,7 +422,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           <ul style={{margin:'6px 0 0 16px',padding:0,fontSize:12}}>
             {servicios.length === 0 && <li>Al menos un <strong>servicio</strong> activo</li>}
             {canales.length === 0 && <li>Al menos un <strong>canal</strong> activo</li>}
-            {colabs.length === 0 && <li>Al menos una <strong>colaboradora</strong> activa</li>}
+            {colabs.length === 0 && <li>Al menos una <strong>persona</strong> activa</li>}
             {cuentas.length === 0 && <li>Al menos una <strong>cuenta</strong> activa</li>}
           </ul>
         </div>
@@ -438,7 +438,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     return (
       <div style={{padding:'10px 0 0'}}>
         <div style={{padding:'14px 16px',background:'rgba(212,131,74,.1)',border:'1px solid rgba(212,131,74,.4)',borderRadius:10,fontSize:12.5,color:'#8f4e26',lineHeight:1.55,marginBottom:14}}>
-          <strong>Todas las colaboradoras están marcadas como pagadas.</strong> Para agregar más servicios, desmarca el pago de al menos una (botón <em>Pagado</em> en su bloque).
+          <strong>Todo el personal ya está marcado como pagado.</strong> Para agregar más servicios, desmarca el pago de al menos una (botón <em>Pagado</em> en su bloque).
         </div>
         <div style={{display:'flex',justifyContent:'flex-end',gap:10}}>
           <Btn variant="ghost" size="md" onClick={onCancel}>Cerrar</Btn>
@@ -458,11 +458,11 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           </select>
         </div>
         <div>
-          <label style={labelStyle}>Colaboradora (ejecuta)</label>
+          <label style={labelStyle}>Ejecuta</label>
           <select value={colabId} onChange={e=>setColab(e.target.value)} style={fieldStyle}>
             {colabsDisponibles.map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
           </select>
-          {colabsPagadasIds.length > 0 && <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4}}>{colabsPagadasIds.length} colaboradora{colabsPagadasIds.length>1?'s':''} pagada{colabsPagadasIds.length>1?'s':''} (oculta{colabsPagadasIds.length>1?'s':''}). Desmarca su pago para usarla.</div>}
+          {colabsPagadasIds.length > 0 && <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4}}>{colabsPagadasIds.length} {colabsPagadasIds.length>1?'personas':'persona'} ya {colabsPagadasIds.length>1?'pagadas':'pagada'} (oculta{colabsPagadasIds.length>1?'s':''}). Desmarca el pago para usarla.</div>}
         </div>
       </div>
 
@@ -493,9 +493,9 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,alignItems:'end'}}>
             <div>
-              <label style={labelStyle}>Vendedora (opcional)</label>
+              <label style={labelStyle}>Vendedor/a (opcional)</label>
               <select value={vendedoraId} onChange={e=>setVendedora(e.target.value)} style={fieldStyle}>
-                <option value="">— Sin vendedora (ejecutor también vendió) —</option>
+                <option value="">— Sin vendedor (quien ejecuta también vendió) —</option>
                 {colabsDisponibles.filter(c=>c.id!==colabId).map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
               </select>
             </div>
