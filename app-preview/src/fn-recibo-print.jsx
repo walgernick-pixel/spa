@@ -4,9 +4,10 @@
 // Diseño: carta vertical, 8pt body, firmas inline, cabe ~1 hoja
 // ──────────────────────────────────────────
 
-// Agrupa ventas por colaboradora (ejecutor + vendedora)
-// Devuelve lista con: nombre, ejecutadas, vendidas, porMoneda {MXN: monto, ...}, firma, firmadoAt
-const computeColabsPrint = (ventas, turnoColabs) => {
+// Agrupa ventas por colaboradora (ejecutor + vendedora).
+// Si hay venta_pagos (split), calcula comisiones PROPORCIONALES por moneda real.
+// Si no hay pagos (legacy), usa v.moneda con monto completo.
+const computeColabsPrint = (ventas, turnoColabs, ventaPagos = [], cuentas = []) => {
   const map = {};
   const ensure = (id, nombre, alias) => {
     if (!map[id]) map[id] = {
@@ -16,18 +17,60 @@ const computeColabsPrint = (ventas, turnoColabs) => {
       firma: null, firmadoAt: null, pagado: false,
     };
   };
+  // Mapa cuenta -> moneda
+  const cuentaMoneda = {};
+  cuentas.forEach(c => { cuentaMoneda[c.id] = c.moneda; });
+  // Mapa venta_id -> pagos
+  const pagosByVenta = {};
+  ventaPagos.forEach(p => {
+    (pagosByVenta[p.venta_id] = pagosByVenta[p.venta_id] || []).push(p);
+  });
+
   ventas.forEach(v => {
     ensure(v.colaboradora_id, v.colaboradora_nombre, v.colaboradora_alias);
     map[v.colaboradora_id].ejecutadas.push(v);
-    const m = v.moneda;
-    map[v.colaboradora_id].porMoneda[m] = (map[v.colaboradora_id].porMoneda[m] || 0) + Number(v.comision_monto||0) + Number(v.propina||0);
 
-    if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
-      ensure(v.vendedora_id, v.vendedora_nombre, v.vendedora_alias);
-      map[v.vendedora_id].vendidas.push(v);
-      map[v.vendedora_id].porMoneda[m] = (map[v.vendedora_id].porMoneda[m] || 0) + Number(v.comision_venta_monto||0);
+    const pagosV = pagosByVenta[v.id] || [];
+    const servicios = pagosV.filter(p => p.tipo === 'servicio');
+    const propinas  = pagosV.filter(p => p.tipo === 'propina');
+
+    if (servicios.length === 0) {
+      // Legacy: sin pagos, usa v.moneda + v.comision_monto + v.propina
+      const m = v.moneda;
+      map[v.colaboradora_id].porMoneda[m] = (map[v.colaboradora_id].porMoneda[m] || 0) + Number(v.comision_monto||0) + Number(v.propina||0);
+      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
+        ensure(v.vendedora_id, v.vendedora_nombre, v.vendedora_alias);
+        map[v.vendedora_id].vendidas.push(v);
+        map[v.vendedora_id].porMoneda[m] = (map[v.vendedora_id].porMoneda[m] || 0) + Number(v.comision_venta_monto||0);
+      }
+      return;
     }
+
+    // Nuevo: cada pago de servicio genera comisión proporcional en su moneda
+    const pct   = Number(v.comision_pct || 0);
+    const cvPct = Number(v.comision_venta_pct || 0);
+    const tieneVendedora = v.vendedora_id && v.vendedora_id !== v.colaboradora_id;
+    if (tieneVendedora) {
+      ensure(v.vendedora_id, v.vendedora_nombre, v.vendedora_alias);
+      if (!map[v.vendedora_id].vendidas.includes(v)) map[v.vendedora_id].vendidas.push(v);
+    }
+
+    servicios.forEach(p => {
+      const m = cuentaMoneda[p.cuenta_id] || 'MXN';
+      const comisionEjec = Number(p.monto) * pct / 100;
+      map[v.colaboradora_id].porMoneda[m] = (map[v.colaboradora_id].porMoneda[m] || 0) + comisionEjec;
+      if (tieneVendedora) {
+        const comisionVend = Number(p.monto) * cvPct / 100;
+        map[v.vendedora_id].porMoneda[m] = (map[v.vendedora_id].porMoneda[m] || 0) + comisionVend;
+      }
+    });
+    // Propinas: 100% al ejecutor en la moneda de cada línea
+    propinas.forEach(p => {
+      const m = cuentaMoneda[p.cuenta_id] || 'MXN';
+      map[v.colaboradora_id].porMoneda[m] = (map[v.colaboradora_id].porMoneda[m] || 0) + Number(p.monto);
+    });
   });
+
   turnoColabs.forEach(tc => {
     if (map[tc.colaboradora_id]) {
       map[tc.colaboradora_id].firma     = tc.firma_data_url;
@@ -38,8 +81,8 @@ const computeColabsPrint = (ventas, turnoColabs) => {
   return Object.values(map).sort((a,b) => a.nombre.localeCompare(b.nombre));
 };
 
-const ReciboPrintable = ({turno, ventas, porCuenta, turnoColabs, monedas, reportados, notas, totales}) => {
-  const colabsInfo = computeColabsPrint(ventas, turnoColabs);
+const ReciboPrintable = ({turno, ventas, ventaPagos=[], cuentas=[], porCuenta, turnoColabs, monedas, reportados, notas, totales}) => {
+  const colabsInfo = computeColabsPrint(ventas, turnoColabs, ventaPagos, cuentas);
   const symOf = (m) => monedas[m]?.simbolo || '$';
   const fmt   = (n, dec=0) => Number(n).toLocaleString('es-MX', {minimumFractionDigits:dec, maximumFractionDigits:dec});
   const fmt2  = (n) => fmt(n, 2);
