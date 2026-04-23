@@ -123,6 +123,22 @@ const GastosListFn = ({onRowClick, onNew}) => {
 
     const {data, error} = await q;
     if (error) notify('Error cargando gastos: '+error.message,'err');
+
+    // Cargar splits para gastos con n_pagos > 1
+    const splitIds = (data || []).filter(g => g.n_pagos > 1).map(g => g.id);
+    if (splitIds.length > 0) {
+      const {data: sp} = await sb.from('gasto_pagos')
+        .select('gasto_id, monto, orden, cta:cuentas(label, moneda)')
+        .in('gasto_id', splitIds)
+        .order('orden');
+      const byGasto = {};
+      (sp||[]).forEach(s => {
+        if (!byGasto[s.gasto_id]) byGasto[s.gasto_id] = [];
+        byGasto[s.gasto_id].push(s);
+      });
+      (data||[]).forEach(g => { if (g.n_pagos > 1) g.splits = byGasto[g.id] || []; });
+    }
+
     setGastos(data || []);
     setLoading(false);
   },[periodo, catFiltro, cuentaFiltro]);
@@ -301,7 +317,10 @@ const GastoRowFn = ({g, first, onClick}) => {
     >
       <div className="num cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)'}}>{formatFecha(g.fecha)}</div>
       <div className="cf-gr-concepto" style={{minWidth:0}}>
-        <div style={{fontSize:13.5,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.concepto}</div>
+        <div style={{fontSize:13.5,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'flex',alignItems:'center',gap:6}}>
+          <span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{g.concepto}</span>
+          {g.es_facturable && <span title="Gasto facturable (IVA acreditable)" style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#7a4e10',background:'var(--sand-100)',padding:'1px 5px',borderRadius:3,border:'1px solid #ecd49a',flexShrink:0}}>Fact</span>}
+        </div>
         <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
           <span className="cf-show-narrow num">{formatFecha(g.fecha)} · </span>
           {g.proveedor && <>{g.proveedor} · </>}
@@ -311,13 +330,31 @@ const GastoRowFn = ({g, first, onClick}) => {
       </div>
       <div className="cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{g.proveedor || <span style={{color:'var(--ink-3)',fontStyle:'italic'}}>—</span>}</div>
       <div className="cf-hide-narrow"><Chip tone={g.categoria_tone || 'neutral'}>{g.categoria}</Chip></div>
-      <div className="cf-hide-narrow" style={{fontSize:11.5,color:'var(--ink-2)'}}>
-        <div style={{fontWeight:600,color:'var(--ink-1)',display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-          {g.cuenta}
-          {!esMXN && <span style={{fontSize:9,fontWeight:700,color:'var(--ink-3)',background:'var(--paper-sunk)',padding:'1px 4px',borderRadius:3,letterSpacing:.3}}>{g.moneda}</span>}
-          {g.n_pagos > 1 && <span title={`Split en ${g.n_pagos} cuentas`} style={{fontSize:9,fontWeight:700,color:'#fff',background:'var(--ink-blue)',padding:'1px 5px',borderRadius:3,letterSpacing:.3}}>SPLIT</span>}
-        </div>
-        <div style={{fontSize:10,color:'var(--ink-3)',marginTop:1}}>{g.cuenta_tipo}</div>
+      <div className="cf-hide-narrow" style={{fontSize:11.5,color:'var(--ink-2)',minWidth:0}}>
+        {g.n_pagos > 1 && g.splits ? (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}>
+              <span style={{fontSize:9,fontWeight:700,color:'#fff',background:'var(--ink-blue)',padding:'1px 5px',borderRadius:3,letterSpacing:.3}}>SPLIT · {g.n_pagos}</span>
+            </div>
+            <div style={{fontSize:10,color:'var(--ink-3)',lineHeight:1.35,whiteSpace:'normal'}}>
+              {g.splits.map((s,i) => (
+                <span key={i}>
+                  <span style={{color:'var(--ink-2)',fontWeight:500}}>{s.cta?.label || '—'}</span>
+                  <span style={{color:'var(--ink-3)'}}> ${Math.round(Number(s.monto)).toLocaleString('es-MX')}</span>
+                  {i < g.splits.length - 1 && <span style={{color:'var(--ink-3)'}}> · </span>}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{fontWeight:600,color:'var(--ink-1)',display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+              {g.cuenta}
+              {!esMXN && <span style={{fontSize:9,fontWeight:700,color:'var(--ink-3)',background:'var(--paper-sunk)',padding:'1px 4px',borderRadius:3,letterSpacing:.3}}>{g.moneda}</span>}
+            </div>
+            <div style={{fontSize:10,color:'var(--ink-3)',marginTop:1}}>{g.cuenta_tipo}</div>
+          </>
+        )}
       </div>
       <div className="cf-gr-monto" style={{textAlign:'right',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,minWidth:0}}>
         {!g.comprobante_url && <span title="Sin comprobante"><Icon name="receipt" size={12} color="var(--amber)" stroke={2}/></span>}
