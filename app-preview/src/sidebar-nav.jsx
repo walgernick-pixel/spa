@@ -8,7 +8,8 @@ const SidebarNav = ({active, user={name:'Carmen Jiménez',role:'Encargada',tone:
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},
     {id:'gastos',    label:'Gastos',               icon:'wallet',  path:'gastos'},
     ...(window.can && window.can('ver_dashboard') ? [
-      {id:'dash',    label:'Dashboard',            icon:'chart',   path:'dashboard'},
+      {id:'dash',       label:'Dashboard',         icon:'chart',    path:'dashboard'},
+      {id:'objetivos',  label:'Objetivos',         icon:'sparkles', path:'objetivos'},
     ] : []),
   ];
   const cfg=[
