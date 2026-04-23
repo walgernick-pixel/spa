@@ -1,40 +1,10 @@
 // ──────────────────────────────────────────
-// Autenticación + roles
-// - Manage session state (global via window.__auth)
-// - Login functional
+// Autenticación + roles dinámicos
+// - Estado global de sesión (window.__auth)
+// - Login por usuario (sin email real)
 // - Hook useAuth() para componentes
-// - Mapa PERMISOS por rol
+// - Permisos leídos dinámicamente desde tabla `roles` (ver SQL 19)
 // ──────────────────────────────────────────
-
-// ─── Mapa de permisos por rol ───
-const PERMISOS = {
-  admin: {
-    ver_dashboard: true,
-    ver_objetivos: true,
-    ver_fiscal: true,
-    ver_config: true,
-    gestionar_usuarios: true,
-    ver_turnos_cerrados: true,
-    reabrir_turno: true,
-    eliminar_turno: true,
-    eliminar_arqueo: true,
-    editar_turno_cerrado: true,
-    exportar: true,
-  },
-  encargada: {
-    ver_dashboard: false,
-    ver_objetivos: false,
-    ver_fiscal: false,
-    ver_config: true,   // puede ver config básica (servicios, colabs)
-    gestionar_usuarios: false,
-    ver_turnos_cerrados: false,
-    reabrir_turno: false,
-    eliminar_turno: false,
-    eliminar_arqueo: false,
-    editar_turno_cerrado: false,
-    exportar: false,
-  },
-};
 
 // Fallback para cuando no hay sesión (acceso temporal antes de adopción)
 // Cuando ya todos tengan login, esto se puede poner en false por default
@@ -46,10 +16,11 @@ const DOMINIO_INTERNO = 'xcalacoco.local';
 const usernameToEmail = (u) => `${String(u||'').trim().toLowerCase()}@${DOMINIO_INTERNO}`;
 
 // ─── Estado global de auth ───
-// Se expone en window.__auth = { session, perfil, loading, listeners: [] }
+// Se expone en window.__auth = { session, perfil, rolData, loading, listeners: [] }
 window.__auth = window.__auth || {
   session: null,
   perfil: null,
+  rolData: null,   // { clave, nombre, permisos: {...} } desde tabla roles
   loading: true,
   listeners: [],
 };
@@ -66,14 +37,22 @@ const initAuth = async () => {
     if (!session?.user) {
       window.__auth.session = null;
       window.__auth.perfil = null;
+      window.__auth.rolData = null;
       window.__auth.loading = false;
       notifyAuthListeners();
       return;
     }
     // Cargar perfil
-    const {data} = await sb.from('perfiles').select('*').eq('id', session.user.id).maybeSingle();
+    const {data: perfil} = await sb.from('perfiles').select('*').eq('id', session.user.id).maybeSingle();
+    // Cargar rol con permisos (join manual)
+    let rolData = null;
+    if (perfil?.rol) {
+      const {data: rol} = await sb.from('roles').select('clave, nombre, descripcion, protegido, permisos').eq('clave', perfil.rol).maybeSingle();
+      rolData = rol || null;
+    }
     window.__auth.session = session;
-    window.__auth.perfil  = data || null;
+    window.__auth.perfil  = perfil || null;
+    window.__auth.rolData = rolData;
     window.__auth.loading = false;
     notifyAuthListeners();
   };
@@ -101,17 +80,24 @@ const useAuth = () => {
   return {
     session: window.__auth.session,
     perfil:  window.__auth.perfil,
+    rolData: window.__auth.rolData,
     loading: window.__auth.loading,
     rol:     window.__auth.perfil?.rol || (ANON_COMO_ADMIN ? 'admin' : null),
   };
 };
 
 // Función can() real — la que realmente usan los componentes
+// Lee permisos desde el rol cargado de la DB. admin siempre true por seguridad.
 const canReal = (permiso) => {
   const perfil = window.__auth?.perfil;
+  const rolData = window.__auth?.rolData;
   if (perfil) {
-    const rol = perfil.rol;
-    return !!(PERMISOS[rol]?.[permiso] ?? false);
+    // admin SIEMPRE tiene todo (respaldo defensivo aunque el seed ya lo dice)
+    if (perfil.rol === 'admin') return true;
+    if (rolData?.permisos && permiso in rolData.permisos) {
+      return !!rolData.permisos[permiso];
+    }
+    return false;
   }
   // No logueado: fallback
   if (ANON_COMO_ADMIN) return true;
@@ -207,4 +193,4 @@ if (typeof initAuth === 'function' && !window.__auth_inited) {
   initAuth();
 }
 
-Object.assign(window, { Login: LoginFn, useAuth, initAuth, canReal, logout, PERMISOS, DOMINIO_INTERNO, usernameToEmail });
+Object.assign(window, { Login: LoginFn, useAuth, initAuth, canReal, logout, DOMINIO_INTERNO, usernameToEmail });

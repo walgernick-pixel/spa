@@ -260,7 +260,7 @@ const PVTurnoFn = () => {
           <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
             <div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600,color:'var(--ink-1)',marginBottom:6}}>Turno sin servicios aún</div>
             <div style={{fontSize:13,color:'var(--ink-3)',marginBottom:14}}>Registra el primer servicio vendido con el botón de arriba.</div>
-            {window.can && window.can('eliminar_turno') && turno.estado === 'abierto' && (
+            {window.can && window.can('turnos_eliminar') && turno.estado === 'abierto' && (
               <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar turno vacío</Btn>
             )}
           </div>
@@ -287,7 +287,7 @@ const PVTurnoFn = () => {
               <div style={{fontSize:12,color:'var(--ink-2)'}}>Revisa el efectivo. Desde ahí cierras el turno definitivamente (puedes volver antes).</div>
             </div>
             <div style={{display:'flex',gap:8}}>
-              {window.can && window.can('eliminar_turno') && (
+              {window.can && window.can('turnos_eliminar') && (
                 <Btn variant="ghost" size="md" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
               )}
               <Btn variant="moss" icon="arrow-right" size="lg" onClick={irAArqueo}>Ir a arqueo</Btn>
@@ -307,7 +307,7 @@ const PVTurnoFn = () => {
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <Btn variant="ghost" size="md" icon="lock" onClick={reabrirTurno}>Reabrir turno</Btn>
               <Btn variant="secondary" onClick={()=>navigate('turnos/arqueo/'+turnoId)}>Ver arqueo</Btn>
-              {window.can && window.can('eliminar_turno') && (
+              {window.can && window.can('turnos_eliminar') && (
                 <Btn variant="ghost" size="md" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar</Btn>
               )}
             </div>
