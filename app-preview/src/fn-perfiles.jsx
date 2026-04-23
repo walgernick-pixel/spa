@@ -95,6 +95,9 @@ const PerfilesPermisosFn = () => {
   // Rol abierto en acordeón
   const [rolAbierto, setRolAbierto] = React.useState(null);
 
+  // Pestaña activa: 'usuarios' | 'roles'
+  const [tab, setTab] = React.useState('usuarios');
+
   React.useEffect(() => {
     if (!esAdmin) { setLoading(false); return; }
     (async () => {
@@ -160,12 +163,36 @@ const PerfilesPermisosFn = () => {
           <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Perfiles y permisos</div>
           <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Usuarios con acceso al sistema. Las encargadas entran con su usuario y contraseña (sin correo).</div>
         </div>
-        <Btn variant="clay" size="md" icon="plus" onClick={()=>setModalNuevo(true)}>Nuevo usuario</Btn>
+        {tab === 'usuarios'
+          ? <Btn variant="clay" size="md" icon="plus" onClick={()=>setModalNuevo(true)}>Nuevo usuario</Btn>
+          : <Btn variant="clay" size="md" icon="plus" onClick={()=>setModalNuevoRol(true)}>Nuevo rol</Btn>}
       </div>
 
-      <div style={{flex:1,overflowY:'auto',padding:'12px 36px 60px'}}>
+      {/* Pestañas */}
+      <div style={{padding:'0 36px',borderBottom:'1px solid var(--line-1)',display:'flex',gap:4}}>
+        {[
+          {id:'usuarios', label:'Usuarios', count: lista.length},
+          {id:'roles',    label:'Roles y permisos', count: roles.length},
+        ].map(t => (
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{
+              background:'transparent',border:'none',padding:'14px 18px',cursor:'pointer',
+              fontFamily:'inherit',fontSize:14,
+              fontWeight: tab===t.id ? 700 : 500,
+              color: tab===t.id ? 'var(--ink-0)' : 'var(--ink-3)',
+              borderBottom: tab===t.id ? '2px solid var(--clay)' : '2px solid transparent',
+              marginBottom:-1,letterSpacing:-.1,
+            }}>
+            {t.label}
+            <span style={{fontSize:11,marginLeft:8,fontWeight:600,color:'var(--ink-3)',background:'var(--paper-sunk)',padding:'2px 7px',borderRadius:999}}>{t.count}</span>
+          </button>
+        ))}
+      </div>
 
-        {/* Tabla perfiles */}
+      <div style={{flex:1,overflowY:'auto',padding:'24px 36px 60px'}}>
+
+        {/* ═══ Tab Usuarios ═══ */}
+        {tab === 'usuarios' && (
         <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:32}}>
           <div style={{display:'grid',gridTemplateColumns:'44px 1.4fr 1fr 150px 90px 140px',gap:14,padding:'11px 20px',background:'var(--paper-sunk)',borderBottom:'1px solid var(--line-1)'}}>
             {['','Nombre','Usuario','Rol','Estado',''].map((h,i)=>(
@@ -226,15 +253,14 @@ const PerfilesPermisosFn = () => {
             );
           })}
         </div>
+        )}
 
-        {/* ═══ Sección: Roles y permisos ═══ */}
-        <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:12,marginBottom:12,paddingBottom:10,borderBottom:'1px solid var(--line-1)'}}>
-          <div>
-            <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.4,lineHeight:1}}>Roles y permisos</div>
-            <div style={{fontSize:12.5,color:'var(--ink-3)',marginTop:4}}>Activa o desactiva permisos por rol · el rol Administrador está protegido</div>
+        {/* ═══ Tab Roles y permisos ═══ */}
+        {tab === 'roles' && (
+        <div>
+          <div style={{fontSize:12.5,color:'var(--ink-3)',marginBottom:14,lineHeight:1.5}}>
+            Expande un rol para ver y togglear sus permisos. El rol <strong>Administrador</strong> está protegido — siempre tiene todos los permisos.
           </div>
-          <Btn variant="ghost" size="sm" icon="plus" onClick={()=>setModalNuevoRol(true)}>Nuevo rol</Btn>
-        </div>
 
         {roles.map(rol => {
           const abierto = rolAbierto === rol.clave;
@@ -294,6 +320,8 @@ const PerfilesPermisosFn = () => {
             </div>
           );
         })}
+        </div>
+        )}
 
       </div>
 
