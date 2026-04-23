@@ -29,6 +29,7 @@ const SidebarNav = ({active}) => {
     {id:'servicios', label:'Servicios y comisiones',icon:'sparkles',path:'config/servicios'},
     {id:'colab',     label:'Colaboradores',        icon:'users',    path:'config/colaboradoras'},
     {id:'perm',      label:'Perfiles y permisos',  icon:'shield',   path:'config/perfiles'},
+    {id:'respaldo',  label:'Respaldo de datos',    icon:'download', path:'config/respaldo'},
   ];
   return (
     <aside style={{width:248,height:'100%',background:'var(--paper-raised)',borderRight:'1px solid var(--line-1)',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',flexShrink:0}}>
