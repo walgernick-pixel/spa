@@ -82,7 +82,7 @@ const ObjetivosFn = () => {
     setModal({tipo: existe ? 'editar' : 'nuevo', data: existe, tipoForzado: tipo, periodoForzado: periodoTipo, fechaForzada: periodoFecha});
   };
 
-  if (!window.can || !window.can('ver_dashboard')) {
+  if (!window.can || !window.can('ver_objetivos')) {
     return (
       <div style={{padding:60,textAlign:'center'}}>
         <div style={{fontFamily:'var(--serif)',fontSize:22,color:'var(--ink-1)',marginBottom:10}}>Sin acceso</div>

@@ -2,13 +2,23 @@
 // Sidebar con navegación real (enlaces al router)
 // Reemplaza a sidebar.jsx en las pantallas navegables.
 // ──────────────────────────────────────────
-const SidebarNav = ({active, user={name:'Carmen Jiménez',role:'Encargada',tone:'clay'}}) => {
-  // Dashboard solo visible con permiso ver_dashboard (gerencia)
+const SidebarNav = ({active}) => {
+  // Usuario real desde auth (fallback a placeholder si no hay sesión)
+  const auth = typeof useAuth === 'function' ? useAuth() : null;
+  const perfil = auth?.perfil;
+  const user = perfil
+    ? { name: perfil.nombre_display || perfil.email || 'Sin nombre',
+        role: perfil.rol === 'admin' ? 'Administrador' : 'Encargada',
+        tone: perfil.rol === 'admin' ? 'moss' : 'clay' }
+    : { name: 'Invitado', role: 'Sin sesión', tone: 'clay' };
+  // Items según permisos (gerencia ve dashboard + objetivos)
   const items=[
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},
     {id:'gastos',    label:'Gastos',               icon:'wallet',  path:'gastos'},
     ...(window.can && window.can('ver_dashboard') ? [
       {id:'dash',       label:'Dashboard',         icon:'chart',    path:'dashboard'},
+    ] : []),
+    ...(window.can && window.can('ver_objetivos') ? [
       {id:'objetivos',  label:'Objetivos',         icon:'sparkles', path:'objetivos'},
     ] : []),
   ];
@@ -52,7 +62,7 @@ const SidebarNav = ({active, user={name:'Carmen Jiménez',role:'Encargada',tone:
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{user.role}</div>
         </div>
         <button
-          onClick={()=>navigate('login')}
+          onClick={()=>{ if (typeof logout === 'function') logout(); else navigate('login'); }}
           title="Cerrar sesión"
           style={{background:'transparent',border:'none',cursor:'pointer',width:28,height:28,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-3)'}}
         >
