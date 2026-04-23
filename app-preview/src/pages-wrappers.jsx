@@ -71,5 +71,8 @@ const ConfigServiciosPage = () => (
 const ConfigPerfilesPage = () => (
   <AppShell active="perm"><div style={{flex:1,overflow:'auto'}}><PerfilesPermisos/></div></AppShell>
 );
+const ConfigRespaldoPage = () => (
+  <AppShell active="respaldo"><div style={{flex:1,overflow:'auto'}}><RespaldoPanel/></div></AppShell>
+);
 
-Object.assign(window, { GastosHome, ConfigCuentasPage, ConfigCatalogoPage, ConfigServiciosPage, ConfigPerfilesPage });
+Object.assign(window, { GastosHome, ConfigCuentasPage, ConfigCatalogoPage, ConfigServiciosPage, ConfigPerfilesPage, ConfigRespaldoPage });
