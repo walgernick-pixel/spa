@@ -20,6 +20,7 @@ const PVTurnoFn = () => {
   const [loading, setLoading]       = React.useState(true);
   const [modal, setModal]           = React.useState(null); // {tipo, data?}
   const [allBlocksOpen, setAllOpen] = React.useState(true);
+  const [ocultarMontos, setOcultarMontos] = React.useState(false);
   const [perfiles, setPerfiles]     = React.useState([]); // para cambiar encargado
 
   // Carga inicial
@@ -290,13 +291,21 @@ const PVTurnoFn = () => {
           </button>
         )}
 
-        {/* Toggle colapsar/expandir todos los bloques */}
-        {ventasPorColab.length > 1 && (
-          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:8}}>
+        {/* Toggles: ocultar montos + colapsar/expandir */}
+        {ventasPorColab.length > 0 && (
+          <div style={{display:'flex',justifyContent:'flex-end',gap:6,marginBottom:8}}>
+            <button onClick={()=>setOcultarMontos(!ocultarMontos)}
+              title={ocultarMontos ? 'Mostrar Vendido y A recibir' : 'Ocultar Vendido y A recibir (privacidad al momento de pago)'}
+              style={{background: ocultarMontos ? 'var(--ink-0)' : 'transparent', border:'1px solid ' + (ocultarMontos ? 'var(--ink-0)' : 'var(--line-1)'), borderRadius:6, padding:'5px 10px', fontSize:11, color: ocultarMontos ? '#faf7f1' : 'var(--ink-2)', cursor:'pointer', fontFamily:'inherit', fontWeight:500, display:'flex', alignItems:'center', gap:6}}>
+              <Icon name={ocultarMontos?'eye-off':'eye'} size={12} color={ocultarMontos?'#faf7f1':'var(--ink-3)'}/>
+              {ocultarMontos ? 'Mostrar montos' : 'Ocultar montos'}
+            </button>
+            {ventasPorColab.length > 1 && (
             <button onClick={()=>setAllOpen(!allBlocksOpen)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,padding:'5px 10px',fontSize:11,color:'var(--ink-2)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,display:'flex',alignItems:'center',gap:6}}>
               <Icon name={allBlocksOpen?'chev-down':'chev-right'} size={11} color="var(--ink-3)"/>
               {allBlocksOpen ? 'Contraer todos' : 'Expandir todos'}
             </button>
+            )}
           </div>
         )}
 
@@ -311,7 +320,7 @@ const PVTurnoFn = () => {
         ) : (
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {ventasPorColab.map(c => (
-              <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas} ventaPagos={ventaPagos}
+              <ColabBlockFn key={c.colaboradora_id} c={c} canales={canales} monedas={monedas} cuentas={cuentas} ventaPagos={ventaPagos} ocultarMontos={ocultarMontos}
                 turnoAbierto={turno.estado==='abierto'}
                 globalOpen={allBlocksOpen}
                 onTogglePago={()=>togglePago(c.colaboradora_id)}
