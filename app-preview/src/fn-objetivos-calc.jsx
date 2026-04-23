@@ -111,13 +111,14 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
     const n = (ventasHistoricas || []).length;
     avgTicketSpa = n > 0 ? total / n : 0;
   }
-  // Agrupar ventas del periodo por colab
+  // Agrupar ventas del periodo por colab (ejecutor) + comisiones para venta neta
   const porColab = {};
   ventas.forEach(v => {
     const id = v.colaboradora_id;
     if (!id) return;
-    if (!porColab[id]) porColab[id] = {ventas:0, n:0};
+    if (!porColab[id]) porColab[id] = {ventas:0, comisiones:0, n:0};
     porColab[id].ventas += Number(v.precio_mxn || 0);
+    porColab[id].comisiones += Number(v.comision_mxn || 0);
     porColab[id].n += 1;
   });
   // Evaluar cada colab activa que haya tenido ventas
@@ -126,6 +127,7 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
     const colab = (colabs || []).find(c => c.id === id);
     if (!colab) return;
     const ticket = d.n > 0 ? d.ventas / d.n : 0;
+    const neta = d.ventas - d.comisiones;
 
     const okVentas = obj.cond_ventas_min == null || d.ventas >= Number(obj.cond_ventas_min);
 
@@ -138,18 +140,14 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
 
     const cumple = okVentas && okTicket && okSvc;
 
-    let bono = 0;
-    if (cumple && obj.bono_pct != null) {
-      const pct = Number(obj.bono_pct) / 100;
-      if (obj.bono_base === 'total') bono = d.ventas * pct;
-      else bono = Math.max(0, d.ventas - (Number(obj.cond_ventas_min) || 0)) * pct; // exceso por default
-    }
+    const bono = cumple ? calcBonoMonto(obj, {total: d.ventas, exceso: d.ventas - (Number(obj.cond_ventas_min) || 0), neta}) : 0;
 
     resultados.push({
       colab_id: id,
       nombre: colab.nombre + (colab.apellidos ? ' '+colab.apellidos : ''),
       alias: colab.alias,
       ventas: d.ventas,
+      neta,
       ticket,
       n: d.n,
       cumple,
@@ -169,8 +167,76 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
   };
 };
 
+// Helper compartido: calcula el monto del bono según modalidad
+const calcBonoMonto = (obj, bases) => {
+  // bases: {total, exceso, neta}
+  if (obj.bono_modalidad === 'monto_fijo') {
+    return Number(obj.bono_monto_fijo) || 0;
+  }
+  // Porcentaje (default si no está definido)
+  const pct = (Number(obj.bono_pct) || 0) / 100;
+  if (obj.bono_base === 'total') return Math.max(0, bases.total) * pct;
+  if (obj.bono_base === 'neta')  return Math.max(0, bases.neta) * pct;
+  return Math.max(0, bases.exceso) * pct; // default 'exceso'
+};
+
+// bono_encargada: por cada colaboradora que abrió ≥ N turnos, calcular
+// bono sobre las VENTAS TOTALES de esos turnos (todos los terapeutas que ejecutaron)
+const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
+  // Agrupar turnos por encargada_id
+  const porEnc = {};
+  turnos.forEach(t => {
+    const id = t.encargada_id;
+    if (!id) return;
+    if (!porEnc[id]) porEnc[id] = {turnos:[], turnoIds:new Set(), nTurnos:0, ventas:0, comisiones:0, nServicios:0};
+    porEnc[id].turnoIds.add(t.id);
+    porEnc[id].nTurnos += 1;
+  });
+  // Sumar ventas de los turnos que abrió cada encargada
+  ventas.forEach(v => {
+    if (!v.turno_id) return;
+    Object.values(porEnc).forEach(e => {
+      if (e.turnoIds.has(v.turno_id)) {
+        e.ventas += Number(v.precio_mxn || 0);
+        e.comisiones += Number(v.comision_mxn || 0) + Number(v.comision_venta_mxn || 0);
+        e.nServicios += 1;
+      }
+    });
+  });
+  // Evaluar cada encargada
+  const resultados = [];
+  Object.entries(porEnc).forEach(([id, d]) => {
+    const colab = (colabs || []).find(c => c.id === id);
+    const neta = d.ventas - d.comisiones;
+
+    const okTurnos  = obj.cond_turnos_min  == null || d.nTurnos >= Number(obj.cond_turnos_min);
+    const okVentas  = obj.cond_ventas_min  == null || d.ventas >= Number(obj.cond_ventas_min);
+    const cumple = okTurnos && okVentas;
+
+    const bono = cumple ? calcBonoMonto(obj, {total: d.ventas, exceso: d.ventas - (Number(obj.cond_ventas_min) || 0), neta}) : 0;
+
+    resultados.push({
+      colab_id: id,
+      nombre: colab ? colab.nombre + (colab.apellidos ? ' '+colab.apellidos : '') : 'Encargada desconocida',
+      alias: colab?.alias,
+      nTurnos: d.nTurnos,
+      ventas: d.ventas,
+      neta,
+      nServicios: d.nServicios,
+      cumple,
+      bono,
+      okTurnos, okVentas,
+    });
+  });
+  resultados.sort((a,b) => b.ventas - a.ventas);
+  const ganadoras = resultados.filter(r => r.cumple);
+  const cerca = resultados.filter(r => !r.cumple).slice(0, 5);
+  const totalBono = ganadoras.reduce((a,g) => a + g.bono, 0);
+  return {ganadoras, cerca, totalBonoSugerido: totalBono};
+};
+
 Object.assign(window, {
   rangoPeriodoObj, labelPeriodoObj, ventanaDefaultObj,
   restarMeses, periodoYoY,
-  calcVentaSpa, calcTicketSpa, calcBonoIndividual,
+  calcVentaSpa, calcTicketSpa, calcBonoIndividual, calcBonoEncargada, calcBonoMonto,
 });
