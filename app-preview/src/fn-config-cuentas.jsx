@@ -23,6 +23,7 @@ const FormCuenta = ({cuenta, onSave, onCancel, monedas}) => {
   const [tipo,setTipo]       = React.useState(cuenta?.tipo || 'banco');
   const [moneda,setMoneda]   = React.useState(cuenta?.moneda || 'MXN');
   const [activo,setActivo]   = React.useState(cuenta?.activo ?? true);
+  const [esFiscal,setEF]     = React.useState(cuenta?.es_fiscal ?? false);
   const [saving,setSaving]   = React.useState(false);
   const editando = !!cuenta;
 
@@ -32,7 +33,7 @@ const FormCuenta = ({cuenta, onSave, onCancel, monedas}) => {
   const guardar = async () => {
     if (!label.trim()) return notify('Falta el nombre de la cuenta','err');
     setSaving(true);
-    const payload = { label: label.trim(), tipo, moneda, activo };
+    const payload = { label: label.trim(), tipo, moneda, activo, es_fiscal: esFiscal };
     let error;
     if (editando) ({error} = await sb.from('cuentas').update(payload).eq('id', cuenta.id));
     else          ({error} = await sb.from('cuentas').insert(payload));
@@ -64,6 +65,21 @@ const FormCuenta = ({cuenta, onSave, onCancel, monedas}) => {
           </select>
         </div>
       </div>
+      {/* Fiscal toggle */}
+      <div style={{marginBottom:16,padding:'12px 14px',background:esFiscal?'var(--sand-100)':'var(--paper-sunk)',border:'1px solid '+(esFiscal?'#ecd49a':'var(--line-2)'),borderRadius:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:esFiscal?8:0}}>
+          {typeof Toggle !== 'undefined' ? (
+            <Toggle checked={esFiscal} onChange={setEF} size="sm"/>
+          ) : (
+            <input type="checkbox" checked={esFiscal} onChange={e=>setEF(e.target.checked)}/>
+          )}
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)'}}>{esFiscal ? 'Cuenta fiscal' : 'Cuenta no fiscal'}</div>
+            <div style={{fontSize:11,color:'var(--ink-3)',marginTop:1}}>{esFiscal ? 'Los ingresos/egresos se declaran al SAT · cuentan para el cálculo fiscal del dashboard' : 'No se declara · no afecta cálculo de impuestos'}</div>
+          </div>
+        </div>
+      </div>
+
       {editando && (
         <div style={{marginBottom:16}}>
           <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:13,color:'var(--ink-1)'}}>
@@ -302,6 +318,7 @@ const CuentasMonedasFn = () => {
         <TabHeader active={tab} onChange={setTab} tabs={[
           {id:'cuentas', label:'Cuentas', icon:'coins', count:cuentas.length},
           {id:'monedas', label:'Monedas y TC', icon:'percent', count:monedas.length},
+          {id:'fiscal',  label:'Fiscal', icon:'shield'},
         ]}/>
 
         <div style={{flex:1,overflowY:'auto',padding:'24px 36px 60px'}}>
@@ -326,9 +343,10 @@ const CuentasMonedasFn = () => {
                   </div>
                   {cuentas.map((c,i)=>(
                     <div key={c.id} style={{display:'grid',gridTemplateColumns:'1fr 140px 100px 100px 80px',gap:14,alignItems:'center',padding:'14px 22px',borderTop:i===0?'none':'1px solid var(--line-1)',opacity:c.activo?1:.6}}>
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                         <span style={{width:10,height:10,borderRadius:2,background:monedaColor[c.moneda]||'var(--ink-2)'}}/>
                         <span style={{fontSize:14,fontWeight:600,color:'var(--ink-0)'}}>{c.label}</span>
+                        {c.es_fiscal && <span title="Cuenta fiscal: se declara al SAT" style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#7a4e10',background:'var(--sand-100)',padding:'2px 6px',borderRadius:4,border:'1px solid #ecd49a'}}>Fiscal</span>}
                       </div>
                       <div style={{fontSize:12,color:'var(--ink-2)',textTransform:'capitalize'}}>{c.tipo}</div>
                       <div><Chip tone="neutral" style={{fontSize:10,fontFamily:'var(--mono)',letterSpacing:.5}}>{c.moneda}</Chip></div>
@@ -403,6 +421,8 @@ const CuentasMonedasFn = () => {
               </div>
             </>
           )}
+
+          {!loading && tab==='fiscal' && <ConfigFiscalTab/>}
         </div>
       </div>
 
