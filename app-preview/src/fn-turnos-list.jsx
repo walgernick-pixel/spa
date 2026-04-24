@@ -409,12 +409,14 @@ const TurnoRowFn = ({t, first, onClick}) => {
       {/* Resumen V / C / N */}
       {(() => {
         const v = Number(t.total_mxn || 0);
+        const d = Number(t.descuentos_mxn || 0);
         const c = Number(t.comisiones_mxn || 0) + Number(t.comisiones_venta_mxn || 0);
-        const n = v - c;
+        const n = v - d - c;
         const fmt = (x) => '$' + Math.round(x).toLocaleString('es-MX');
         return (
           <div className="cf-tr-vcn num" style={{minWidth:0,textAlign:'right',fontSize:11.5,lineHeight:1.45}}>
             <div style={{color:'var(--ink-1)',fontWeight:600}}>V = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(v)}</span></div>
+            {d > 0 && <div style={{color:'var(--ink-3)'}} title="Descuentos otorgados">D = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(d)}</span></div>}
             <div style={{color:'var(--clay)'}}>C = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(c)}</span></div>
             <div style={{color:'var(--moss)',fontWeight:700}}>N = <span style={{fontFamily:'var(--serif)',fontSize:13}}>{fmt(n)}</span></div>
           </div>

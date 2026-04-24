@@ -411,6 +411,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   const [canalId, setCanal]         = React.useState(venta?.canal_id || '');
   const [cuentaId, setCuenta]       = React.useState(venta?.cuenta_id || '');
   const [precio, setPrecio]         = React.useState(venta?.precio || '');
+  const [descuento, setDescuento]   = React.useState(venta?.descuento || 0);
   const [duracion, setDuracion]     = React.useState(venta?.duracion_min || '');
   const [comisionPct, setPct]       = React.useState(venta?.comision_pct ?? '');
   const [propina, setPropina]       = React.useState(venta?.propina || 0);
@@ -422,28 +423,28 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   // Cada línea tiene: cuenta + monto del servicio + propina (opcional) en la misma moneda
   const [splitActivo, setSplitActivo] = React.useState(false);
   const [splitLines, setSplitLines]   = React.useState([
-    {cuentaId: '', monto: '', tip: ''},
-    {cuentaId: '', monto: '', tip: ''},
+    {cuentaId: '', monto: '', tip: '', dscto: ''},
+    {cuentaId: '', monto: '', tip: '', dscto: ''},
   ]);
 
   // Al editar venta ya guardada, traer sus pagos (si existen) para pre-poblar
   React.useEffect(() => {
     if (!editando || !venta?.id) return;
     (async () => {
-      const {data} = await sb.from('venta_pagos').select('cuenta_id, tipo, monto, orden').eq('venta_id', venta.id).order('orden');
+      const {data} = await sb.from('venta_pagos').select('cuenta_id, tipo, monto, descuento, orden').eq('venta_id', venta.id).order('orden');
       if (!data || data.length === 0) return;
       const serv = data.filter(x => x.tipo === 'servicio');
       const prop = data.filter(x => x.tipo === 'propina');
       if (serv.length > 1) {
         setSplitActivo(true);
-        // Unificar serv+prop por cuenta_id: cada línea cuenta tiene su monto (servicio) y su tip (propina)
+        // Unificar serv+prop por cuenta_id: cada línea cuenta tiene su monto, dscto y tip
         const byCuenta = {};
-        serv.forEach(s => { byCuenta[s.cuenta_id] = {cuentaId: s.cuenta_id, monto: String(s.monto), tip: '0', orden: s.orden}; });
+        serv.forEach(s => { byCuenta[s.cuenta_id] = {cuentaId: s.cuenta_id, monto: String(s.monto), tip: '0', dscto: String(s.descuento || 0), orden: s.orden}; });
         prop.forEach(p => {
-          if (!byCuenta[p.cuenta_id]) byCuenta[p.cuenta_id] = {cuentaId: p.cuenta_id, monto: '0', tip: String(p.monto), orden: p.orden};
+          if (!byCuenta[p.cuenta_id]) byCuenta[p.cuenta_id] = {cuentaId: p.cuenta_id, monto: '0', tip: String(p.monto), dscto: '0', orden: p.orden};
           else byCuenta[p.cuenta_id].tip = String(p.monto);
         });
-        const arr = Object.values(byCuenta).sort((a,b) => a.orden - b.orden).map(x => ({cuentaId: x.cuentaId, monto: x.monto, tip: x.tip}));
+        const arr = Object.values(byCuenta).sort((a,b) => a.orden - b.orden).map(x => ({cuentaId: x.cuentaId, monto: x.monto, tip: x.tip, dscto: x.dscto}));
         setSplitLines(arr);
       }
     })();
@@ -451,7 +452,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   }, [venta?.id]);
 
   // Helpers para split lines
-  const addSplitLine = () => setSplitLines(l => [...l, {cuentaId: '', monto: '', tip: ''}]);
+  const addSplitLine = () => setSplitLines(l => [...l, {cuentaId: '', monto: '', tip: '', dscto: ''}]);
   const rmSplitLine  = (i) => setSplitLines(l => l.filter((_,j) => j !== i));
   const updSplitLine = (i, field, val) => setSplitLines(l => l.map((x,j) => j===i ? {...x, [field]: val} : x));
 
@@ -461,10 +462,12 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
     const m = c ? monedas[c.moneda] : null;
     return m ? Number(m.tc_a_mxn) : 1;
   };
-  const lineMxn     = (l) => (parseFloat(l.monto) || 0) * getCuentaTc(l.cuentaId);
-  const lineTipMxn  = (l) => (parseFloat(l.tip)   || 0) * getCuentaTc(l.cuentaId);
-  const splitTotalMxn    = splitActivo ? splitLines.reduce((s,l) => s + lineMxn(l), 0)    : 0;
-  const splitPropTotalMxn= splitActivo ? splitLines.reduce((s,l) => s + lineTipMxn(l), 0) : 0;
+  const lineMxn      = (l) => (parseFloat(l.monto) || 0) * getCuentaTc(l.cuentaId);
+  const lineTipMxn   = (l) => (parseFloat(l.tip)   || 0) * getCuentaTc(l.cuentaId);
+  const lineDsctoMxn = (l) => (parseFloat(l.dscto) || 0) * getCuentaTc(l.cuentaId);
+  const splitTotalMxn     = splitActivo ? splitLines.reduce((s,l) => s + lineMxn(l), 0)      : 0;
+  const splitPropTotalMxn = splitActivo ? splitLines.reduce((s,l) => s + lineTipMxn(l), 0)   : 0;
+  const splitDsctoTotalMxn= splitActivo ? splitLines.reduce((s,l) => s + lineDsctoMxn(l), 0) : 0;
 
   // Moneda base (para mostrar resúmenes)
   const monedaBase = React.useMemo(() => {
@@ -503,16 +506,19 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
   };
 
   // Si split está activo, el "precio" efectivo es la suma de líneas convertidas a MXN
-  const precioBaseNum = parseFloat(precio) || 0;
-  const precioNum     = splitActivo ? splitTotalMxn : precioBaseNum;
-  const pctNum        = parseFloat(comisionPct) || 0;
-  const propinaNum    = splitActivo ? splitPropTotalMxn : (parseFloat(propina) || 0);
-  const permiteCV     = !!(canal && canal.permite_comision_venta);
-  const cvPctNum      = permiteCV ? (parseFloat(canal.comision_venta_pct)||0) : 0;
-  const vendedoraSel  = vendedoraId && vendedoraId !== colabId ? colabs.find(c=>c.id===vendedoraId) : null;
-  const comisionMonto = precioNum * pctNum / 100;
-  const comisionVenta = (permiteCV && vendedoraSel) ? (precioNum * cvPctNum / 100) : 0;
-  const spaRecibe     = precioNum - comisionMonto - comisionVenta;
+  const precioBaseNum   = parseFloat(precio) || 0;
+  const precioNum       = splitActivo ? splitTotalMxn : precioBaseNum;
+  const descuentoBaseNum= parseFloat(descuento) || 0;
+  const descuentoNum    = splitActivo ? splitDsctoTotalMxn : descuentoBaseNum;
+  const pctNum          = parseFloat(comisionPct) || 0;
+  const propinaNum      = splitActivo ? splitPropTotalMxn : (parseFloat(propina) || 0);
+  const permiteCV       = !!(canal && canal.permite_comision_venta);
+  const cvPctNum        = permiteCV ? (parseFloat(canal.comision_venta_pct)||0) : 0;
+  const vendedoraSel    = vendedoraId && vendedoraId !== colabId ? colabs.find(c=>c.id===vendedoraId) : null;
+  // Comisión siempre sobre precio BRUTO (regla de negocio: el descuento lo asume el spa)
+  const comisionMonto   = precioNum * pctNum / 100;
+  const comisionVenta   = (permiteCV && vendedoraSel) ? (precioNum * cvPctNum / 100) : 0;
+  const spaRecibe       = precioNum - descuentoNum - comisionMonto - comisionVenta;
 
   // Si el canal NO permite comisión por venta, limpiar vendedora
   React.useEffect(()=>{
@@ -535,10 +541,12 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
       for (const l of splitLines) {
         if (!l.cuentaId) return notify('Falta seleccionar cuenta en una línea','err');
         if (!(parseFloat(l.monto) > 0)) return notify('Todas las líneas deben tener monto > 0','err');
+        if ((parseFloat(l.dscto) || 0) > (parseFloat(l.monto) || 0)) return notify('El descuento no puede superar el monto de la línea','err');
       }
     } else {
       if (!cuentaId)    return notify('Selecciona la cuenta donde cae el pago','err');
       if (precioBaseNum<=0) return notify('El precio debe ser mayor a 0','err');
+      if (descuentoBaseNum > precioBaseNum) return notify('El descuento no puede superar el precio','err');
     }
     // (propinas vienen dentro de cada splitLine como line.tip; no necesitan validación extra)
 
@@ -555,6 +563,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
       canal_id: canalId,
       cuenta_id: cuentaPrincipal?.id || cuentaId,
       precio: precioNum, // en MXN si hay split, o en moneda de cuenta si no
+      descuento: descuentoNum,
       duracion_min: parseInt(duracion) || null,
       comision_pct: pctNum,
       comision_monto: comisionMonto,
@@ -582,14 +591,14 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
       const pagoRows = [];
       if (splitActivo) {
         splitLines.forEach((l, i) => {
-          pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'servicio', monto: parseFloat(l.monto), orden: i});
+          pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'servicio', monto: parseFloat(l.monto), descuento: parseFloat(l.dscto) || 0, orden: i});
           const tipNum = parseFloat(l.tip);
           if (tipNum > 0) {
             pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'propina', monto: tipNum, orden: i});
           }
         });
       } else {
-        pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'servicio', monto: precioBaseNum, orden: 0});
+        pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'servicio', monto: precioBaseNum, descuento: descuentoBaseNum, orden: 0});
         if (propinaNum > 0) pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'propina', monto: propinaNum, orden: 0});
       }
       if (pagoRows.length > 0) {
@@ -724,22 +733,24 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
             </select>
           ) : (
             <div style={{border:'1px solid var(--line-2)',borderRadius:8,padding:'10px',background:'var(--paper-sunk)'}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 26px',gap:6,marginBottom:4,fontSize:9.5,fontWeight:700,color:'var(--ink-3)',letterSpacing:.5,textTransform:'uppercase'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 82px 72px 72px 22px',gap:6,marginBottom:4,fontSize:9.5,fontWeight:700,color:'var(--ink-3)',letterSpacing:.5,textTransform:'uppercase'}}>
                 <div>Cuenta</div>
-                <div style={{textAlign:'right'}}>Monto servicio</div>
+                <div style={{textAlign:'right'}}>Monto</div>
+                <div style={{textAlign:'right'}}>Dscto</div>
                 <div style={{textAlign:'right'}}>Propina</div>
                 <div/>
               </div>
               {splitLines.map((l, i) => (
-                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 26px',gap:6,marginBottom:6,alignItems:'center'}}>
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 82px 72px 72px 22px',gap:6,marginBottom:6,alignItems:'center'}}>
                   <select value={l.cuentaId} onChange={e=>updSplitLine(i,'cuentaId',e.target.value)} style={{...fieldStyle,padding:'7px 10px',fontSize:12}}>
                     <option value="">— Selecciona cuenta —</option>
                     {cuentas.map(c=><option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>)}
                   </select>
                   <input type="number" step="0.01" min="0" value={l.monto} onChange={e=>updSplitLine(i,'monto',e.target.value)} placeholder="0" style={{...fieldStyle,padding:'7px 10px',fontSize:12,textAlign:'right'}} className="num"/>
+                  <input type="number" step="0.01" min="0" value={l.dscto} onChange={e=>updSplitLine(i,'dscto',e.target.value)} placeholder="0" style={{...fieldStyle,padding:'7px 10px',fontSize:12,textAlign:'right'}} className="num"/>
                   <input type="number" step="0.01" min="0" value={l.tip}   onChange={e=>updSplitLine(i,'tip',e.target.value)}   placeholder="0" style={{...fieldStyle,padding:'7px 10px',fontSize:12,textAlign:'right'}} className="num"/>
                   <button type="button" onClick={()=>rmSplitLine(i)} disabled={splitLines.length<=2}
-                    style={{background:'transparent',border:'none',cursor:splitLines.length<=2?'not-allowed':'pointer',color:'var(--ink-3)',opacity:splitLines.length<=2?.3:1}}>
+                    style={{background:'transparent',border:'none',cursor:splitLines.length<=2?'not-allowed':'pointer',color:'var(--ink-3)',opacity:splitLines.length<=2?.3:1,padding:0}}>
                     <Icon name="trash" size={13}/>
                   </button>
                 </div>
@@ -750,6 +761,7 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
                 </button>
                 <span className="num">
                   Servicio: <strong>${splitTotalMxn.toLocaleString('es-MX',{maximumFractionDigits:0})}</strong>
+                  {splitDsctoTotalMxn > 0 && <> · Dscto: <strong>${splitDsctoTotalMxn.toLocaleString('es-MX',{maximumFractionDigits:0})}</strong></>}
                   {splitPropTotalMxn > 0 && <> · Tips: <strong>${splitPropTotalMxn.toLocaleString('es-MX',{maximumFractionDigits:0})}</strong></>}
                   {' '}{monedaBase?.codigo || 'MXN'}
                 </span>
@@ -763,8 +775,8 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         </div>
       </div>
 
-      {/* Fila 4: Precio + Propina */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14,padding:'14px',background:'var(--paper-sunk)',borderRadius:10,border:'1px solid var(--line-2)'}}>
+      {/* Fila 4: Precio + Descuento + Propina */}
+      <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr',gap:12,marginBottom:14,padding:'14px',background:'var(--paper-sunk)',borderRadius:10,border:'1px solid var(--line-2)'}}>
         <div>
           <label style={labelStyle}>Precio {splitActivo ? '(suma de líneas, MXN)' : (moneda && `(${moneda.codigo})`)}</label>
           <div style={{position:'relative'}}>
@@ -779,6 +791,23 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           {!splitActivo && moneda && moneda.codigo !== 'MXN' && precioNum>0 && (
             <div style={{fontSize:10.5,color:'var(--ink-3)',marginTop:4,textAlign:'right'}} className="num">≈ ${(precioNum*tc).toLocaleString('es-MX',{maximumFractionDigits:0})} MXN (TC {tc.toFixed(2)})</div>
           )}
+        </div>
+        <div>
+          <label style={labelStyle}>Descuento (opcional)</label>
+          {splitActivo ? (
+            <div style={{...fieldStyle,padding:'10px 12px',background:'var(--paper-raised)',opacity:.85,display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'default'}}>
+              <span style={{fontSize:11,color:'var(--ink-3)'}}>Se llena en cada línea arriba</span>
+              <span className="num" style={{fontWeight:700,fontFamily:'var(--serif)',fontSize:16}}>
+                ${splitDsctoTotalMxn.toLocaleString('es-MX',{maximumFractionDigits:0})} {monedaBase?.codigo || 'MXN'}
+              </span>
+            </div>
+          ) : (
+            <div style={{position:'relative'}}>
+              <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)',fontSize:14}}>$</span>
+              <input type="number" step="0.01" min="0" value={descuento} onChange={e=>setDescuento(e.target.value)} placeholder="0" style={{...fieldStyle,paddingLeft:22,textAlign:'right'}} className="num"/>
+            </div>
+          )}
+          <div style={{fontSize:10,color:'var(--ink-3)',marginTop:4,lineHeight:1.3}}>Lo asume el spa. La comisión se calcula sobre el precio sin descuento.</div>
         </div>
         <div>
           <label style={labelStyle}>Propina (opcional) · 100% al terapeuta</label>
@@ -824,8 +853,8 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
             </div>
             <div>
               <div style={{color:'var(--ink-3)',fontSize:10.5,marginBottom:2}}>Cobrado al cliente</div>
-              <div className="num" style={{fontWeight:700,color:'var(--ink-0)'}}>{(splitActivo?monedaBase?.simbolo:moneda?.simbolo)||'$'}{(precioNum+propinaNum).toLocaleString('es-MX',{maximumFractionDigits:2})}</div>
-              <div style={{color:'var(--ink-3)',fontSize:9.5,marginTop:1}}>{splitActivo ? `${splitLines.length} cuentas` : cuenta?.label}</div>
+              <div className="num" style={{fontWeight:700,color:'var(--ink-0)'}}>{(splitActivo?monedaBase?.simbolo:moneda?.simbolo)||'$'}{(precioNum-descuentoNum+propinaNum).toLocaleString('es-MX',{maximumFractionDigits:2})}</div>
+              <div style={{color:'var(--ink-3)',fontSize:9.5,marginTop:1}}>{descuentoNum>0?`Dscto −${(splitActivo?monedaBase?.simbolo:moneda?.simbolo)||'$'}${descuentoNum.toLocaleString('es-MX',{maximumFractionDigits:0})} · `:''}{splitActivo ? `${splitLines.length} cuentas` : cuenta?.label}</div>
             </div>
           </div>
 
@@ -835,9 +864,10 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
             splitLines.forEach(l => {
               const c = cuentas.find(x => x.id === l.cuentaId);
               if (!c) return;
-              const g = grupos[c.moneda] = grupos[c.moneda] || {moneda: c.moneda, servicio: 0, tip: 0, simbolo: monedas[c.moneda]?.simbolo || '$'};
+              const g = grupos[c.moneda] = grupos[c.moneda] || {moneda: c.moneda, servicio: 0, tip: 0, dscto: 0, simbolo: monedas[c.moneda]?.simbolo || '$'};
               g.servicio += parseFloat(l.monto) || 0;
               g.tip      += parseFloat(l.tip)   || 0;
+              g.dscto    += parseFloat(l.dscto) || 0;
             });
             const filas = Object.values(grupos);
             if (filas.length === 0) return null;
@@ -853,8 +883,8 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
                   {filas.map(g => {
                     const terapeuta = g.servicio * pctNum / 100 + g.tip;
                     const vendedor  = vendedoraSel ? g.servicio * cvPctNum / 100 : 0;
-                    const spa       = g.servicio - (g.servicio * pctNum / 100) - vendedor;
-                    const cobrado   = g.servicio + g.tip;
+                    const spa       = g.servicio - g.dscto - (g.servicio * pctNum / 100) - vendedor;
+                    const cobrado   = g.servicio - g.dscto + g.tip;
                     return (
                       <React.Fragment key={g.moneda}>
                         <div style={{fontFamily:'var(--mono)',fontWeight:700,color:'var(--ink-1)'}}>{g.moneda}</div>

@@ -203,10 +203,11 @@ const PVTurnoFn = () => {
 
   // Totales del turno
   const totalVentasMxn      = ventas.reduce((a,v)=>a+Number(v.precio_mxn||0), 0);
+  const totalDescuentosMxn  = ventas.reduce((a,v)=>a+Number(v.descuento_mxn||0), 0);
   const totalComisionesMxn  = ventas.reduce((a,v)=>a+Number(v.comision_mxn||0), 0);
   const totalComVentaMxn    = ventas.reduce((a,v)=>a+Number(v.comision_venta_mxn||0), 0);
   const totalPropinasMxn    = ventas.reduce((a,v)=>a+Number(v.propina_mxn||0), 0);
-  const netoSpaMxn          = totalVentasMxn - totalComisionesMxn - totalComVentaMxn;
+  const netoSpaMxn          = totalVentasMxn - totalDescuentosMxn - totalComisionesMxn - totalComVentaMxn;
 
   if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando turno…</div>;
   if (!turnoId || !turno) return (
@@ -281,7 +282,7 @@ const PVTurnoFn = () => {
             <QuickMetric lbl="Ventas" pct="100%" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
             <QuickMetric lbl="A terapeutas" pct={pctOf(totalComisionesMxn)} val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
             {totalComVentaMxn > 0 && <QuickMetric lbl="Comisión por venta" pct={pctOf(totalComVentaMxn)} val={<Money amount={totalComVentaMxn} size={15} weight={600} color="var(--ink-blue)"/>}/>}
-            <QuickMetric lbl="Propinas" val={<Money amount={totalPropinasMxn} size={15} weight={600} color="var(--ink-2)"/>} note="100% al terapeuta"/>
+            <QuickMetric lbl="Descuentos" pct={totalDescuentosMxn>0?pctOf(totalDescuentosMxn):undefined} val={<Money amount={totalDescuentosMxn} size={15} weight={600} color="var(--ink-2)"/>} note={totalPropinasMxn>0?`Propinas: $${Math.round(totalPropinasMxn).toLocaleString('es-MX')}`:'Lo asume el spa'}/>
             <QuickMetric lbl="Neto al spa" pct={pctOf(netoSpaMxn)} val={<Money amount={netoSpaMxn} size={15} weight={700} color="var(--moss)"/>}/>
           </div>
         );
