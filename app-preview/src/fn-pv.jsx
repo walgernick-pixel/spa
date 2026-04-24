@@ -408,13 +408,17 @@ const PVTurnoFn = () => {
 };
 
 const QuickMetric = ({lbl, val, note, pct}) => (
-  <div style={{padding:'8px 16px',background:'var(--paper-raised)'}}>
-    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:3,display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:6}}>
-      <span>{lbl}</span>
-      {pct !== undefined && pct !== null && <span className="num" style={{fontSize:10,fontWeight:700,color:'var(--ink-2)',letterSpacing:.2}}>{pct}</span>}
+  <div style={{padding:'10px 16px',background:'var(--paper-raised)',minHeight:68,display:'flex',flexDirection:'column',justifyContent:'space-between',gap:4}}>
+    <div>
+      <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:4}}>{lbl}</div>
+      <div>{val}</div>
     </div>
-    <div>{val}</div>
-    {note && <div style={{fontSize:10,color:'var(--ink-3)',marginTop:2}}>{note}</div>}
+    {(pct || note) && (
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,fontSize:10,color:'var(--ink-3)',lineHeight:1.2}}>
+        {note ? <span style={{fontStyle:'italic'}}>{note}</span> : <span/>}
+        {pct && <span className="num" style={{fontWeight:700,letterSpacing:.3,color:'var(--ink-2)'}}>{pct}</span>}
+      </div>
+    )}
   </div>
 );
 
