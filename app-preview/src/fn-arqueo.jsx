@@ -116,13 +116,11 @@ const ArqueoFn = () => {
         if (!b) return;
         b.ventasTotal += Number(v.precio || 0);
         b.nVentas += 1;
-        if (b.tipo === 'efectivo') {
-          const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
-          if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
-          if (pagVend) {
-            const comisionVenta = Number(v.comision_venta_monto || 0);
-            if (pagVend === true) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
-          }
+        const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
+        if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
+        if (pagVend) {
+          const comisionVenta = Number(v.comision_venta_monto || 0);
+          if (pagVend === true) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
         }
         return;
       }
@@ -132,13 +130,11 @@ const ArqueoFn = () => {
         const b = ensureBucket(p.cuenta_id);
         if (!b) return;
         b.ventasTotal += Number(p.monto);
-        if (b.tipo === 'efectivo') {
-          const comisionEjec = Number(p.monto) * comPct / 100;
-          if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
-          if (pagVend !== null) {
-            const comisionVenta = Number(p.monto) * cvPct / 100;
-            if (pagVend) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
-          }
+        const comisionEjec = Number(p.monto) * comPct / 100;
+        if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
+        if (pagVend !== null) {
+          const comisionVenta = Number(p.monto) * cvPct / 100;
+          if (pagVend) b.comisionesPagadas += comisionVenta; else b.pendientes += comisionVenta;
         }
       });
       // Contamos la venta una vez, en la cuenta de la primera línea de servicio
@@ -147,13 +143,11 @@ const ArqueoFn = () => {
         if (b) b.nVentas += 1;
       }
 
-      // Propinas: 100% va al terapeuta (sale de la cuenta)
+      // Propinas: 100% va al terapeuta (sale de la cuenta donde entró el pago)
       pagosPropina.forEach(p => {
         const b = ensureBucket(p.cuenta_id);
         if (!b) return;
-        if (b.tipo === 'efectivo') {
-          if (pagEjec) b.comisionesPagadas += Number(p.monto); else b.pendientes += Number(p.monto);
-        }
+        if (pagEjec) b.comisionesPagadas += Number(p.monto); else b.pendientes += Number(p.monto);
       });
     });
     Object.values(map).forEach(b => {
@@ -366,7 +360,7 @@ const ArqueoFn = () => {
           <div style={{padding:'14px 18px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10,display:'flex',gap:12,alignItems:'flex-start',fontSize:12.5,color:'#7a4e10',lineHeight:1.55,marginBottom:20}}>
             <Icon name="sparkles" size={14} stroke={1.8} style={{marginTop:2,flexShrink:0}}/>
             <div>
-              <strong>Solo se arquean cuentas en efectivo.</strong> Ventas en tarjeta o transferencia se verifican con el banco. El sistema ya descontó las comisiones <strong>pagadas</strong> del esperado — las pendientes siguen contando como efectivo en gaveta.
+              <strong>Se arquean todas las cuentas con ventas.</strong> Las comisiones salen de la misma cuenta donde entró la venta. El sistema descontó las <strong>pagadas</strong> del neto esperado — las pendientes siguen contando como saldo de la cuenta.
             </div>
           </div>
 
@@ -396,8 +390,7 @@ const ArqueoFn = () => {
                   const hasRep = repNum !== null && !isNaN(repNum);
                   const dif = hasRep ? (repNum - b.netoEsperado) : null;
                   const difZero = hasRep && Math.abs(dif) < 0.01;
-                  const esEfectivo = b.tipo === 'efectivo';
-                  const reportadoLabel = esEfectivo ? 'Neto en gaveta' : (b.tipo==='terminal' ? 'Total en terminal' : 'Total en cuenta');
+                  const reportadoLabel = b.tipo==='efectivo' ? 'Neto en gaveta' : (b.tipo==='terminal' ? 'Neto en terminal' : 'Neto en cuenta');
 
                   return (
                     <div key={b.cuenta_id} style={{background:'var(--paper-raised)',border:`1px solid ${color}33`,borderRadius:12,overflow:'hidden'}}>
@@ -415,28 +408,21 @@ const ArqueoFn = () => {
                         <div>
                           <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:10}}>Cálculo del sistema</div>
                           <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
-                            <span style={{color:'var(--ink-2)'}}>Ventas {esEfectivo?'en efectivo':''}</span>
+                            <span style={{color:'var(--ink-2)'}}>Ventas</span>
                             <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>+ {sym}{b.ventasTotal.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
                           </div>
-                          {esEfectivo && (
-                            <>
-                              <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
-                                <span style={{color:'var(--ink-2)'}}>Comisiones pagadas</span>
-                                <span className="num" style={{fontWeight:600,color:'var(--clay)'}}>− {sym}{b.comisionesPagadas.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
-                              </div>
-                              {b.pendientes > 0 && (
-                                <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:11,color:'var(--ink-3)',fontStyle:'italic'}}>
-                                  <span>(Pendientes sin pagar: no se descuentan)</span>
-                                  <span className="num">{sym}{b.pendientes.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
-                                </div>
-                              )}
-                            </>
-                          )}
-                          {!esEfectivo && (
-                            <div style={{fontSize:11,color:'var(--ink-3)',fontStyle:'italic',padding:'4px 0'}}>Las comisiones no salen de esta cuenta — se pagan desde efectivo.</div>
+                          <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12.5}}>
+                            <span style={{color:'var(--ink-2)'}}>Comisiones pagadas</span>
+                            <span className="num" style={{fontWeight:600,color:'var(--clay)'}}>− {sym}{b.comisionesPagadas.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                          </div>
+                          {b.pendientes > 0 && (
+                            <div style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:11,color:'var(--ink-3)',fontStyle:'italic'}}>
+                              <span>(Pendientes sin pagar: no se descuentan)</span>
+                              <span className="num">{sym}{b.pendientes.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                            </div>
                           )}
                           <div style={{borderTop:'1px solid var(--line-1)',marginTop:8,paddingTop:10,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
-                            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-2)'}}>{esEfectivo?'Neto esperado':'Total esperado'}</span>
+                            <span style={{fontSize:11,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-2)'}}>Neto esperado</span>
                             <span className="num" style={{fontFamily:'var(--serif)',fontSize:22,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.5}}>{sym}{b.netoEsperado.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
                           </div>
                         </div>
