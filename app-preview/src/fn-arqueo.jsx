@@ -109,11 +109,11 @@ const ArqueoFn = () => {
       const comPct   = Number(v.comision_pct || 0);
       const cvPct    = Number(v.comision_venta_pct || 0);
 
-      // Fallback legacy: si no hay rows en venta_pagos, usa v.cuenta_id + v.precio
+      // Fallback legacy: si no hay rows en venta_pagos, usa v.cuenta_id + v.precio - v.descuento
       if (pagosServicio.length === 0) {
         const b = ensureBucket(v.cuenta_id);
         if (!b) return;
-        b.ventasTotal += Number(v.precio || 0);
+        b.ventasTotal += Number(v.precio || 0) - Number(v.descuento || 0);
         b.nVentas += 1;
         const comisionEjec = Number(v.comision_monto || 0);
         if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
@@ -124,11 +124,12 @@ const ArqueoFn = () => {
         return;
       }
 
-      // Flujo nuevo: suma por cada pago en SU cuenta nativa (proporcional)
+      // Flujo nuevo: suma por cada pago en SU cuenta nativa (proporcional), neto de descuento
       pagosServicio.forEach(p => {
         const b = ensureBucket(p.cuenta_id);
         if (!b) return;
-        b.ventasTotal += Number(p.monto);
+        b.ventasTotal += Number(p.monto) - Number(p.descuento || 0);
+        // Comisión se calcula sobre precio BRUTO (el descuento lo asume el spa)
         const comisionEjec = Number(p.monto) * comPct / 100;
         if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
         if (pagVend !== null) {
@@ -296,15 +297,18 @@ const ArqueoFn = () => {
   // DEBE ir antes del early return (rules of hooks)
   const totalesRecibo = React.useMemo(() => {
     const tcOf = (m) => Number(monedas[m]?.tc_a_mxn || 1);
-    let v=0, c=0, cv=0, p=0;
+    let v=0, d=0, c=0, cv=0, p=0;
     ventas.forEach(vt => {
       const f = tcOf(vt.moneda);
       v  += Number(vt.precio || 0) * f;
+      d  += Number(vt.descuento || 0) * f;
       c  += Number(vt.comision_monto || 0) * f;
       cv += Number(vt.comision_venta_monto || 0) * f;
       p  += Number(vt.propina || 0) * f;
     });
-    return { ventas: v, comisiones: c, comVenta: cv, propinas: p, neto: v - c - cv - p };
+    // Neto al spa: ventas brutas − descuentos − comisiones − com. por venta
+    // (las propinas van 100% al terapeuta pero no afectan el neto del spa, ya están excluidas)
+    return { ventas: v, descuentos: d, comisiones: c, comVenta: cv, propinas: p, neto: v - d - c - cv };
   }, [ventas, monedas]);
 
   if (loading) return <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando arqueo…</div>;

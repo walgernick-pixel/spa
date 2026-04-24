@@ -151,10 +151,11 @@ const ReciboPrintable = ({turno, ventas, ventaPagos=[], cuentas=[], porCuenta, t
           <table className="pr-table">
             <tbody>
               <tr><td>Ventas brutas</td><td className="num">${fmt2(totales.ventas)}</td></tr>
+              {totales.descuentos > 0 && <tr><td>Descuentos</td><td className="num">− ${fmt2(totales.descuentos)}</td></tr>}
               <tr><td>Comisiones pagadas (terapeutas)</td><td className="num">− ${fmt2(totales.comisiones)}</td></tr>
               {totales.comVenta > 0 && <tr><td>Comisiones por venta</td><td className="num">− ${fmt2(totales.comVenta)}</td></tr>}
-              <tr><td>Propinas (100% al terapeuta)</td><td className="num">− ${fmt2(totales.propinas)}</td></tr>
               <tr className="total-row"><td>Neto al spa</td><td className="num">${fmt2(totales.neto)}</td></tr>
+              {totales.propinas > 0 && <tr><td style={{color:'#666',fontSize:'7pt'}}>Propinas (100% al terapeuta · fuera del corte)</td><td className="num" style={{color:'#666',fontSize:'7pt'}}>${fmt2(totales.propinas)}</td></tr>}
             </tbody>
           </table>
         </div>
