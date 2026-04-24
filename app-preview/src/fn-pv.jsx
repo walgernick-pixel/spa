@@ -274,13 +274,18 @@ const PVTurnoFn = () => {
       </div>
 
       {/* Métricas rápidas */}
-      <div style={{padding:'10px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:`repeat(auto-fit, minmax(120px, 1fr))`,gap:1}}>
-        <QuickMetric lbl="Ventas" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
-        <QuickMetric lbl="A terapeutas" val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
-        {totalComVentaMxn > 0 && <QuickMetric lbl="Comisión por venta" val={<Money amount={totalComVentaMxn} size={15} weight={600} color="var(--ink-blue)"/>}/>}
-        <QuickMetric lbl="Propinas" val={<Money amount={totalPropinasMxn} size={15} weight={600} color="var(--ink-2)"/>} note="100% al terapeuta"/>
-        <QuickMetric lbl="Neto al spa" val={<Money amount={netoSpaMxn} size={15} weight={700} color="var(--moss)"/>}/>
-      </div>
+      {(() => {
+        const pctOf = (n) => totalVentasMxn > 0 ? `${Math.round((n/totalVentasMxn)*100)}%` : '—';
+        return (
+          <div style={{padding:'10px 20px',borderBottom:'1px solid var(--line-1)',background:'var(--paper-sunk)',display:'grid',gridTemplateColumns:`repeat(auto-fit, minmax(120px, 1fr))`,gap:1}}>
+            <QuickMetric lbl="Ventas" pct="100%" val={<Money amount={totalVentasMxn} size={15} weight={600}/>}/>
+            <QuickMetric lbl="A terapeutas" pct={pctOf(totalComisionesMxn)} val={<Money amount={totalComisionesMxn} size={15} weight={600} color="var(--clay)"/>}/>
+            {totalComVentaMxn > 0 && <QuickMetric lbl="Comisión por venta" pct={pctOf(totalComVentaMxn)} val={<Money amount={totalComVentaMxn} size={15} weight={600} color="var(--ink-blue)"/>}/>}
+            <QuickMetric lbl="Propinas" val={<Money amount={totalPropinasMxn} size={15} weight={600} color="var(--ink-2)"/>} note="100% al terapeuta"/>
+            <QuickMetric lbl="Neto al spa" pct={pctOf(netoSpaMxn)} val={<Money amount={netoSpaMxn} size={15} weight={700} color="var(--moss)"/>}/>
+          </div>
+        );
+      })()}
 
       {/* Body */}
       <div style={{padding:'18px 20px 80px'}}>
@@ -402,9 +407,12 @@ const PVTurnoFn = () => {
   );
 };
 
-const QuickMetric = ({lbl, val, note}) => (
+const QuickMetric = ({lbl, val, note, pct}) => (
   <div style={{padding:'8px 16px',background:'var(--paper-raised)'}}>
-    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:3}}>{lbl}</div>
+    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:3,display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:6}}>
+      <span>{lbl}</span>
+      {pct !== undefined && pct !== null && <span className="num" style={{fontSize:10,fontWeight:700,color:'var(--ink-2)',letterSpacing:.2}}>{pct}</span>}
+    </div>
     <div>{val}</div>
     {note && <div style={{fontSize:10,color:'var(--ink-3)',marginTop:2}}>{note}</div>}
   </div>

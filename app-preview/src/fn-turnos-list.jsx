@@ -377,7 +377,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
             {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
             {Number(t.reaperturas)>0 && <span title={t.reabierto_at?`Última reapertura: ${new Date(t.reabierto_at).toLocaleDateString('es-MX')}`:'Reabierto'} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.08)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.25)'}}>Reabierto {t.reaperturas}×</span>}
           </div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}{t.encargada_nombre?` · ${t.encargada_nombre.split(' ')[0]}`:''} · {t.n_servicios||0} svc</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin} · {t.n_servicios||0} svc</div>
         </div>
       </div>
 
@@ -386,12 +386,15 @@ const TurnoRowFn = ({t, first, onClick}) => {
         <TimelineBarFn inicio={t.hora_inicio} fin={t.hora_fin} abierto={t.estado==='abierto'}/>
       </div>
 
-      {/* Encargada (solo desktop) */}
-      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:110}}>
+      {/* Encargada — quien abrió el turno (solo desktop) */}
+      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:110}} title="Abrió el turno">
         {t.encargada_nombre ? (
           <>
             <Av name={t.encargada_nombre} tone={(t.encargada_nombre||'').charAt(0).toUpperCase()>='L'?'moss':'clay'} size={22}/>
-            <span style={{fontSize:12,color:'var(--ink-2)'}}>{t.encargada_nombre.split(' ')[0]}</span>
+            <div style={{display:'flex',flexDirection:'column',lineHeight:1.1}}>
+              <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Abrió</span>
+              <span style={{fontSize:12,color:'var(--ink-2)'}}>{t.encargada_nombre.split(' ')[0]}</span>
+            </div>
           </>
         ) : (
           <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargado</span>
