@@ -104,19 +104,18 @@ const ArqueoFn = () => {
     ventas.forEach(v => {
       const pagosV = pagosByVenta[v.id] || [];
       const pagosServicio = pagosV.filter(p => p.tipo === 'servicio');
-      const pagosPropina  = pagosV.filter(p => p.tipo === 'propina');
       const pagEjec  = colabPagada[v.colaboradora_id];
       const pagVend  = v.vendedora_id && v.vendedora_id !== v.colaboradora_id ? colabPagada[v.vendedora_id] : null;
       const comPct   = Number(v.comision_pct || 0);
       const cvPct    = Number(v.comision_venta_pct || 0);
 
-      // Fallback legacy: si no hay rows en venta_pagos, usa v.cuenta_id + v.precio + v.propina
+      // Fallback legacy: si no hay rows en venta_pagos, usa v.cuenta_id + v.precio
       if (pagosServicio.length === 0) {
         const b = ensureBucket(v.cuenta_id);
         if (!b) return;
         b.ventasTotal += Number(v.precio || 0);
         b.nVentas += 1;
-        const comisionEjec = Number(v.comision_monto || 0) + Number(v.propina || 0);
+        const comisionEjec = Number(v.comision_monto || 0);
         if (pagEjec) b.comisionesPagadas += comisionEjec; else b.pendientes += comisionEjec;
         if (pagVend) {
           const comisionVenta = Number(v.comision_venta_monto || 0);
@@ -143,12 +142,8 @@ const ArqueoFn = () => {
         if (b) b.nVentas += 1;
       }
 
-      // Propinas: 100% va al terapeuta (sale de la cuenta donde entró el pago)
-      pagosPropina.forEach(p => {
-        const b = ensureBucket(p.cuenta_id);
-        if (!b) return;
-        if (pagEjec) b.comisionesPagadas += Number(p.monto); else b.pendientes += Number(p.monto);
-      });
+      // Propinas: NO entran al arqueo (son independientes de la venta y del corte).
+      // Se liquidan al terapeuta en la pestaña de pagos del PV.
     });
     Object.values(map).forEach(b => {
       b.netoEsperado = b.ventasTotal - b.comisionesPagadas;
