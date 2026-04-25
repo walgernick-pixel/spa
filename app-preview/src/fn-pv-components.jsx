@@ -594,12 +594,12 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
           pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'servicio', monto: parseFloat(l.monto), descuento: parseFloat(l.dscto) || 0, orden: i});
           const tipNum = parseFloat(l.tip);
           if (tipNum > 0) {
-            pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'propina', monto: tipNum, orden: i});
+            pagoRows.push({venta_id: ventaId, cuenta_id: l.cuentaId, tipo: 'propina', monto: tipNum, descuento: 0, orden: i});
           }
         });
       } else {
         pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'servicio', monto: precioBaseNum, descuento: descuentoBaseNum, orden: 0});
-        if (propinaNum > 0) pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'propina', monto: propinaNum, orden: 0});
+        if (propinaNum > 0) pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'propina', monto: propinaNum, descuento: 0, orden: 0});
       }
       if (pagoRows.length > 0) {
         const {error: pErr} = await sb.from('venta_pagos').insert(pagoRows);
