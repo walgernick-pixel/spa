@@ -2435,6 +2435,10 @@ select
 from colaboradoras c
 where c.activo = true;
 
+-- Aliases manuales: nombres del Excel que no coinciden 1:1 con el alias en BD
+insert into _map_colab (excel_name, colaboradora_id)
+select 'MARI', id from colaboradoras where alias = 'Mary' and activo = true;
+
 create temp table _map_cuenta on commit drop as
 select * from (values
   ('MXN',   '515758be-2646-487d-bdaa-9864860d6c13'::uuid, 'MXN', 1::numeric),
