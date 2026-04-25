@@ -85,7 +85,7 @@ const TurnosListFn = () => {
   const cargar = React.useCallback(async () => {
     setLoading(true);
     const [turnosQ, perfilesQ] = await Promise.all([
-      sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(30),
+      sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(500),
       sb.from('perfiles').select('id, nombre_display, username'),
     ]);
     const { data, error } = turnosQ;
