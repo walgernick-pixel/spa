@@ -81,14 +81,16 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
   React.useEffect(()=>{ cargar(); },[cargar]);
 
   // ── Acciones ──
-  const archivar = async () => {
-    if (!confirmar('¿Archivar este gasto?\n\nQuedará oculto de la lista principal pero podrás restaurarlo desde "Archivados".')) return;
+  // "Eliminar" hace soft-delete (set eliminado = now()). El gasto queda en
+  // la papelera, accesible solo a usuarios con permiso `gastos_papelera`.
+  const eliminar = async () => {
+    if (!confirmar('¿Eliminar este gasto?')) return;
     setBusy(true);
     const {error} = await sb.from('gastos').update({eliminado: new Date().toISOString()}).eq('id', gastoId);
     if (error) { setBusy(false); return notify('Error: '+error.message,'err'); }
-    await sb.from('gastos_historial').insert({gasto_id: gastoId, accion:'archivado'});
+    await sb.from('gastos_historial').insert({gasto_id: gastoId, accion:'eliminado'});
     setBusy(false);
-    notify('Gasto archivado');
+    notify('Gasto eliminado');
     onBack && onBack();
   };
 
@@ -137,14 +139,14 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
             <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
               <div style={{fontFamily:'var(--serif)',fontSize:22,fontWeight:500,letterSpacing:-.4,color:'var(--ink-0)',lineHeight:1}}>{gasto.concepto}</div>
               <Chip tone={gasto.categoria_tone || 'neutral'}>{gasto.categoria}</Chip>
-              {archivado && <Chip tone="neutral"><Icon name="receipt" size={9} stroke={2}/> Archivado</Chip>}
+              {archivado && <Chip tone="neutral"><Icon name="trash" size={9} stroke={2}/> Eliminado</Chip>}
               {splits.length > 1 && <Chip tone="ocean" style={{background:'var(--ink-blue)',color:'#fff'}}>Split · {splits.length} pagos</Chip>}
             </div>
             <div style={{fontSize:11,color:'var(--ink-3)',marginTop:4}}>Gasto #{String(gasto.folio||'').padStart(4,'0')} · {formatFechaLarga(gasto.fecha)}</div>
           </div>
           {!archivado ? (
             <>
-              <Btn variant="ghost" size="md" icon="trash" onClick={archivar} disabled={busy} style={{color:'var(--ink-2)'}}>Archivar</Btn>
+              <Btn variant="ghost" size="md" icon="trash" onClick={eliminar} disabled={busy} style={{color:'var(--ink-2)'}}>Eliminar</Btn>
               <Btn variant="secondary" size="md" icon="edit" onClick={onEdit} disabled={busy}>Editar</Btn>
             </>
           ) : (
