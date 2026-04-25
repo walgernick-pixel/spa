@@ -97,6 +97,12 @@ const GastosListFn = ({onRowClick, onNew}) => {
   const [cats, setCats]             = React.useState([]);
   const [cuentas, setCuentas]       = React.useState([]);
 
+  // Papelera (solo admin/permiso)
+  const [mode, setMode]             = React.useState('activos'); // 'activos' | 'papelera'
+  const [seleccionados, setSel]     = React.useState(new Set());
+  const [bulkBusy, setBulkBusy]     = React.useState(false);
+  const verPapelera = !!(typeof can === 'function' && can('gastos_papelera'));
+
   const metricas = useMetricasMes();
 
   // Cargar filtros (cats y cuentas) una sola vez
@@ -114,8 +120,10 @@ const GastosListFn = ({onRowClick, onNew}) => {
   // Cargar gastos según filtros
   const cargar = React.useCallback(async () => {
     setLoading(true);
+    setSel(new Set()); // reset selección al recargar
     const {desde, hasta} = rangoPeriodo(periodo);
-    let q = sb.from('v_gastos').select('*').order('fecha',{ascending:false}).order('creado',{ascending:false});
+    const fuente = mode === 'papelera' ? 'v_gastos_eliminados' : 'v_gastos';
+    let q = sb.from(fuente).select('*').order('fecha',{ascending:false}).order('creado',{ascending:false});
     if (desde) q = q.gte('fecha', desde);
     if (hasta) q = q.lte('fecha', hasta);
     if (catFiltro !== 'todas')    q = q.eq('categoria_id', catFiltro);
@@ -141,7 +149,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
 
     setGastos(data || []);
     setLoading(false);
-  },[periodo, catFiltro, cuentaFiltro]);
+  },[periodo, catFiltro, cuentaFiltro, mode]);
 
   React.useEffect(()=>{ cargar(); },[cargar]);
 
@@ -171,6 +179,58 @@ const GastosListFn = ({onRowClick, onNew}) => {
     setSearch(''); setPeriodo('ult_6m'); setCatFiltro('todas'); setCuentaF('todas');
   };
   const hayFiltros = search || periodo!=='ult_6m' || catFiltro!=='todas' || cuentaFiltro!=='todas';
+
+  // ── Selección y bulk actions (solo en modo papelera) ──
+  const toggleSel = (id) => {
+    setSel(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const toggleSelTodos = () => {
+    if (seleccionados.size === gastosFiltrados.length) setSel(new Set());
+    else setSel(new Set(gastosFiltrados.map(g => g.id)));
+  };
+  const restaurarSel = async () => {
+    if (seleccionados.size === 0) return;
+    if (!confirmar(`¿Restaurar ${seleccionados.size} gasto${seleccionados.size>1?'s':''}? Volverán a aparecer en la lista activa.`)) return;
+    setBulkBusy(true);
+    const ids = [...seleccionados];
+    const {error} = await sb.from('gastos').update({eliminado: null}).in('id', ids);
+    if (error) { setBulkBusy(false); return notify('Error: '+error.message,'err'); }
+    await sb.from('gastos_historial').insert(ids.map(id => ({gasto_id: id, accion:'restaurado'})));
+    setBulkBusy(false);
+    notify(`${ids.length} gasto${ids.length>1?'s':''} restaurado${ids.length>1?'s':''}`);
+    cargar();
+  };
+  const eliminarSel = async () => {
+    if (seleccionados.size === 0) return;
+    const n = seleccionados.size;
+    const pass = window.prompt(`⚠️ ELIMINAR ${n} GASTO${n>1?'S':''} DEFINITIVAMENTE\n\nSe borrarán de la base de datos sin posibilidad de recuperación.\nEsta acción NO se puede deshacer.\n\nEscribe ELIMINAR para confirmar:`);
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
+    setBulkBusy(true);
+    const {error} = await sb.from('gastos').delete().in('id', [...seleccionados]);
+    setBulkBusy(false);
+    if (error) return notify('Error: '+error.message,'err');
+    notify(`${n} gasto${n>1?'s':''} eliminado${n>1?'s':''} definitivamente`);
+    cargar();
+  };
+  const eliminarTodos = async () => {
+    if (gastosFiltrados.length === 0) return;
+    const n = gastosFiltrados.length;
+    const pass = window.prompt(`⚠️ ELIMINAR LOS ${n} GASTOS DE LA PAPELERA\n\nVacía la papelera por completo (con los filtros actuales aplicados). Sin recuperación.\n\nEscribe VACIAR para confirmar:`);
+    if (pass === null) return;
+    if (pass.trim().toUpperCase() !== 'VACIAR') { notify('Confirmación incorrecta','err'); return; }
+    setBulkBusy(true);
+    const ids = gastosFiltrados.map(g => g.id);
+    const {error} = await sb.from('gastos').delete().in('id', ids);
+    setBulkBusy(false);
+    if (error) return notify('Error: '+error.message,'err');
+    notify(`${n} gastos eliminados`);
+    cargar();
+  };
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)'}}>
@@ -216,12 +276,28 @@ const GastosListFn = ({onRowClick, onNew}) => {
       <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
         <div className="cf-gastos-header" style={{padding:'28px 36px 20px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
           <div>
-            <div className="cf-gastos-title" style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Gastos</div>
-            <div className="cf-gastos-subtitle" style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>Egresos del spa · independientes de turnos</div>
+            <div style={{display:'flex',alignItems:'baseline',gap:14}}>
+              <div className="cf-gastos-title" style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Gastos</div>
+              {verPapelera && (
+                <div style={{display:'inline-flex',gap:0,background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:8,padding:2}}>
+                  <button onClick={()=>setMode('activos')}
+                    style={{background:mode==='activos'?'var(--paper-raised)':'transparent',border:'none',padding:'5px 12px',borderRadius:6,fontSize:11.5,fontWeight:600,color:mode==='activos'?'var(--ink-0)':'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',boxShadow:mode==='activos'?'0 1px 2px rgba(0,0,0,.05)':'none',letterSpacing:.2}}>
+                    Activos
+                  </button>
+                  <button onClick={()=>setMode('papelera')}
+                    style={{background:mode==='papelera'?'var(--paper-raised)':'transparent',border:'none',padding:'5px 12px',borderRadius:6,fontSize:11.5,fontWeight:600,color:mode==='papelera'?'var(--clay)':'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',boxShadow:mode==='papelera'?'0 1px 2px rgba(0,0,0,.05)':'none',letterSpacing:.2,display:'inline-flex',alignItems:'center',gap:5}}>
+                    <Icon name="trash" size={11}/> Papelera
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="cf-gastos-subtitle" style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>
+              {mode === 'papelera' ? 'Gastos eliminados — solo administradores. Restáuralos o bórralos definitivamente.' : 'Egresos del spa · independientes de turnos'}
+            </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <Btn variant="secondary" size="md" icon="download" onClick={()=>notify('Exportar — próximamente','info')}>Exportar</Btn>
-            <Btn variant="clay" size="lg" icon="plus" onClick={onNew}>Nuevo gasto</Btn>
+            {mode !== 'papelera' && <Btn variant="secondary" size="md" icon="download" onClick={()=>notify('Exportar — próximamente','info')}>Exportar</Btn>}
+            {mode !== 'papelera' && <Btn variant="clay" size="lg" icon="plus" onClick={onNew}>Nuevo gasto</Btn>}
           </div>
         </div>
 
@@ -270,9 +346,30 @@ const GastosListFn = ({onRowClick, onNew}) => {
           )}
         </div>
 
+        {/* Bulk actions bar (solo papelera) */}
+        {mode === 'papelera' && !loading && gastosFiltrados.length > 0 && (
+          <div style={{padding:'0 36px 10px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'rgba(212,131,74,.06)',border:'1px solid rgba(212,131,74,.25)',borderRadius:10,flexWrap:'wrap'}}>
+              <label style={{display:'inline-flex',alignItems:'center',gap:8,fontSize:12,color:'var(--ink-2)',cursor:'pointer',fontWeight:500}}>
+                <input type="checkbox"
+                  checked={seleccionados.size === gastosFiltrados.length && gastosFiltrados.length > 0}
+                  ref={el => { if (el) el.indeterminate = seleccionados.size > 0 && seleccionados.size < gastosFiltrados.length; }}
+                  onChange={toggleSelTodos}/>
+                {seleccionados.size === 0 ? 'Seleccionar todos' : `${seleccionados.size} seleccionado${seleccionados.size>1?'s':''}`}
+              </label>
+              <div style={{flex:1}}/>
+              <Btn variant="ghost" size="sm" icon="check" onClick={restaurarSel} disabled={bulkBusy || seleccionados.size===0}>Restaurar</Btn>
+              <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarSel} disabled={bulkBusy || seleccionados.size===0} style={{color:'var(--clay)'}}>Eliminar permanente</Btn>
+              <div style={{width:1,height:18,background:'var(--line-1)'}}/>
+              <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTodos} disabled={bulkBusy} style={{color:'#b73f5e'}}>Vaciar papelera</Btn>
+            </div>
+          </div>
+        )}
+
         {/* Header tabla */}
         <div style={{padding:'0 36px'}}>
-          <div className="cf-gasto-row" style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,padding:'10px 18px',fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',borderBottom:'1px solid var(--line-1)'}}>
+          <div className="cf-gasto-row" style={{display:'grid',gridTemplateColumns: mode==='papelera' ? '28px 92px 1fr 160px 130px 140px 130px 36px' : '92px 1fr 160px 130px 140px 130px 36px',gap:14,padding:'10px 18px',fontSize:10,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)',borderBottom:'1px solid var(--line-1)'}}>
+            {mode === 'papelera' && <div/>}
             <div className="cf-hide-narrow">Fecha</div>
             <div>Concepto / Nota</div>
             <div className="cf-hide-narrow cf-hide-md">Proveedor</div>
@@ -302,7 +399,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
                     </span>
                   </div>
                   <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:10,overflow:'hidden',marginBottom:4}}>
-                    {grupos[f].map((g,i)=>(<GastoRowFn key={g.id} g={g} first={i===0} onClick={()=>onRowClick && onRowClick(g.id)}/>))}
+                    {grupos[f].map((g,i)=>(<GastoRowFn key={g.id} g={g} first={i===0} onClick={()=>onRowClick && onRowClick(g.id)} selectable={mode==='papelera'} selected={seleccionados.has(g.id)} onToggleSel={()=>toggleSel(g.id)}/>))}
                   </div>
                 </div>
               );
@@ -333,13 +430,18 @@ const EmptyState = ({search, hayFiltros, onNew, onLimpiar}) => {
 };
 
 // ─── Row de gasto ───
-const GastoRowFn = ({g, first, onClick}) => {
+const GastoRowFn = ({g, first, onClick, selectable, selected, onToggleSel}) => {
   const esMXN = g.moneda === 'MXN';
   return (
-    <div onClick={onClick} className="cf-gasto-row" style={{display:'grid',gridTemplateColumns:'92px 1fr 160px 130px 140px 130px 36px',gap:14,alignItems:'center',padding:'12px 18px',borderTop:first?'none':'1px solid var(--line-1)',cursor:onClick?'pointer':'default',transition:'background .12s'}}
-      onMouseEnter={e=>onClick && (e.currentTarget.style.background='var(--paper-sunk)')}
-      onMouseLeave={e=>onClick && (e.currentTarget.style.background='transparent')}
+    <div onClick={onClick} className="cf-gasto-row" style={{display:'grid',gridTemplateColumns: selectable ? '28px 92px 1fr 160px 130px 140px 130px 36px' : '92px 1fr 160px 130px 140px 130px 36px',gap:14,alignItems:'center',padding:'12px 18px',borderTop:first?'none':'1px solid var(--line-1)',cursor:onClick?'pointer':'default',transition:'background .12s',background:selected?'rgba(212,131,74,.06)':'transparent'}}
+      onMouseEnter={e=>onClick && !selected && (e.currentTarget.style.background='var(--paper-sunk)')}
+      onMouseLeave={e=>onClick && !selected && (e.currentTarget.style.background='transparent')}
     >
+      {selectable && (
+        <div onClick={e=>{e.stopPropagation(); onToggleSel && onToggleSel();}} style={{display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <input type="checkbox" checked={!!selected} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{cursor:'pointer'}}/>
+        </div>
+      )}
       <div className="num cf-hide-narrow" style={{fontSize:12,color:'var(--ink-2)'}}>{formatFecha(g.fecha)}</div>
       <div className="cf-gr-concepto" style={{minWidth:0}}>
         <div style={{fontSize:13.5,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'flex',alignItems:'center',gap:6}}>

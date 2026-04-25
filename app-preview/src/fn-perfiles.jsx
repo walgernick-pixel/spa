@@ -27,6 +27,7 @@ const CATALOGO_PERMISOS = [
     {id:'gastos_eliminar',       label:'Borrar gastos'},
     {id:'gastos_marcar_pagado',  label:'Marcar gasto como pagado'},
     {id:'gastos_exportar',       label:'Exportar gastos (Excel / PDF)'},
+    {id:'gastos_papelera',       label:'Acceso a la papelera de gastos eliminados'},
   ]},
   { id:'dashboard', label:'Dashboard', permisos: [
     {id:'dashboard_ver',           label:'Acceso al dashboard'},
