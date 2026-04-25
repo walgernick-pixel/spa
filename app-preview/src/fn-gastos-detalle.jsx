@@ -82,9 +82,12 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
 
   // ── Acciones ──
   const archivar = async () => {
-    if (!confirmar('¿Archivar este gasto?\n\nQuedará oculto de la lista principal pero podrás restaurarlo desde "Archivados".')) return;
+    if (!confirmar('¿Archivar este gasto?\n\nQuedará oculto de la lista principal pero podrás restaurarlo desde la papelera.')) return;
     setBusy(true);
-    const {error} = await sb.from('gastos').update({eliminado: new Date().toISOString()}).eq('id', gastoId);
+    const uid = window.__auth?.perfil?.id || null;
+    const {error} = await sb.from('gastos')
+      .update({eliminado: new Date().toISOString(), ...(uid ? {eliminado_por: uid} : {})})
+      .eq('id', gastoId);
     if (error) { setBusy(false); return notify('Error: '+error.message,'err'); }
     await sb.from('gastos_historial').insert({gasto_id: gastoId, accion:'archivado'});
     setBusy(false);
@@ -94,7 +97,7 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
 
   const restaurar = async () => {
     setBusy(true);
-    const {error} = await sb.from('gastos').update({eliminado: null}).eq('id', gastoId);
+    const {error} = await sb.from('gastos').update({eliminado: null, eliminado_por: null}).eq('id', gastoId);
     if (error) { setBusy(false); return notify('Error: '+error.message,'err'); }
     await sb.from('gastos_historial').insert({gasto_id: gastoId, accion:'restaurado'});
     setBusy(false);
