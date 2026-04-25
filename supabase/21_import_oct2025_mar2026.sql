@@ -2642,7 +2642,8 @@ select
   'Comisiones extras a ' || initcap(e.colab),
   '[IMPORT_2025_2026]',
   '85133c85-7c94-4e9d-a33f-5dc9a7de900b'::uuid,  -- Wal
-  e.fecha + time '17:00';
+  e.fecha + time '17:00'
+from extras e;
 
 -- ─────────────────────────────────────────────────────────────
 -- 11) Arqueos cuadrados por (turno, cuenta)
