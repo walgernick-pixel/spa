@@ -2627,7 +2627,7 @@ with extras as (
 )
 insert into gastos (
   fecha, concepto_id, proveedor, cuenta_id,
-  monto, moneda, tc_momento, monto_mxn,
+  monto, moneda, tc_momento,
   descripcion, notas, creado_por, creado
 )
 select
@@ -2638,7 +2638,6 @@ select
   case when e.moneda in ('USD','CAD') then e.monto_excel / e.tc else e.monto_excel end,  -- monto nativa
   e.moneda,
   e.tc,
-  e.monto_excel,  -- el Excel ya estaba en MXN para USD/CAD; para MXN/HSBC es 1×monto
   'Comisiones extras a ' || initcap(e.colab),
   '[IMPORT_2025_2026]',
   '85133c85-7c94-4e9d-a33f-5dc9a7de900b'::uuid,  -- Wal
