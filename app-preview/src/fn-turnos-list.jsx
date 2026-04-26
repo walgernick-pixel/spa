@@ -158,10 +158,13 @@ const TurnosListFn = () => {
     if (error) { notify('Error cargando turnos: '+error.message, 'err'); setLoading(false); return; }
     const pm = {}; (perfilesQ.data || []).forEach(p => { pm[p.id] = p; });
     setPfMap(pm);
-    // Enriquecer cada turno: si la vista no trajo nombre, usar lookup local
+    // Enriquecer cada turno: si la vista no trajo nombres, usar lookup local
     (data || []).forEach(t => {
       if (!t.encargada_nombre && t.encargada_id && pm[t.encargada_id]) {
         t.encargada_nombre = pm[t.encargada_id].nombre_display;
+      }
+      if (!t.abierto_por_nombre && t.abierto_por && pm[t.abierto_por]) {
+        t.abierto_por_nombre = pm[t.abierto_por].nombre_display;
       }
     });
     // Cargar arqueos + monedas para computar diferencia total por turno
@@ -237,12 +240,14 @@ const TurnosListFn = () => {
     const ahora = new Date();
     const hoy   = ahora.toISOString().slice(0,10);
     const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const uid   = user?.user?.id || null;
 
     const nuevo = {
       fecha: hoy,
       hora_inicio: hora,
       estado: 'abierto',
-      encargada_id: user?.user?.id || null,
+      encargada_id: uid,
+      abierto_por: uid,
     };
 
     const { data, error } = await sb.from('turnos').insert(nuevo).select().single();
@@ -262,11 +267,13 @@ const TurnosListFn = () => {
   // Capturar turno retroactivo (fecha en el pasado)
   const capturarPasado = async ({fecha, horaInicio}) => {
     const { data: user } = await sb.auth.getUser();
+    const uid = user?.user?.id || null;
     const nuevo = {
       fecha: fecha,
       hora_inicio: horaInicio,
       estado: 'abierto',
-      encargada_id: user?.user?.id || null,
+      encargada_id: uid,
+      abierto_por: uid,
     };
     const { data, error } = await sb.from('turnos').insert(nuevo).select().single();
     if (error) { notify('No se pudo capturar: '+error.message, 'err'); return; }
@@ -501,15 +508,19 @@ const TurnoRowFn = ({t, first, onClick}) => {
         </div>
       </div>
 
-      {/* Encargada (con flag visual de quién abrió debajo) */}
-      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:130}}>
+      {/* Encargada + quién abrió (si difiere) */}
+      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:140}}>
         {t.encargada_nombre ? (
           <>
             <Av name={t.encargada_nombre} tone={(t.encargada_nombre||'').charAt(0).toUpperCase()>='L'?'moss':'clay'} size={22}/>
             <div style={{display:'flex',flexDirection:'column',lineHeight:1.15}}>
               <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Encargada</span>
               <span style={{fontSize:12,color:'var(--ink-1)',fontWeight:600}}>{t.encargada_nombre.split(' ')[0]}</span>
-              <span style={{fontSize:10,color:'var(--ink-3)',marginTop:1}}>abrió {t.encargada_nombre.split(' ')[0]}</span>
+              {t.abierto_por_nombre && t.abierto_por && t.abierto_por !== t.encargada_id && (
+                <span style={{fontSize:10,color:'var(--ink-3)',marginTop:1}} title={`Click en abrir turno: ${t.abierto_por_nombre}`}>
+                  abrió {t.abierto_por_nombre.split(' ')[0]}
+                </span>
+              )}
             </div>
           </>
         ) : (
