@@ -695,13 +695,13 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         <div style={{marginBottom:14,padding:'12px 14px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
             <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--clay)'}}>Comisión por venta</div>
-            <div style={{fontSize:11,color:'var(--ink-3)'}}>Este canal permite +{cvPctNum}% al vendedor</div>
+            <div style={{fontSize:11,color:'var(--ink-3)'}}>Este canal permite +{cvPctNum}% para quien vende</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,alignItems:'end'}}>
             <div>
-              <label style={labelStyle}>Vendedor/a (opcional)</label>
+              <label style={labelStyle}>Quien vende (opcional)</label>
               <select value={vendedoraId} onChange={e=>setVendedora(e.target.value)} style={fieldStyle}>
-                <option value="">— Sin vendedor (quien ejecuta también vendió) —</option>
+                <option value="">— Quien ejecuta también vendió —</option>
                 {colabsDisponibles.filter(c=>c.id!==colabId).map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
               </select>
             </div>

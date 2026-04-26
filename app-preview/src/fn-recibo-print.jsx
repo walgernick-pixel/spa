@@ -259,7 +259,7 @@ const ReciboPrintable = ({turno, ventas, ventaPagos=[], cuentas=[], porCuenta, t
         <div className="pr-firmas-manuales">
           <div className="pr-firma-block">
             <div className="pr-firma-line"/>
-            <div className="pr-firma-label">Encargada del turno</div>
+            <div className="pr-firma-label">Responsable del turno</div>
             <div className="pr-firma-hint">Nombre y firma</div>
           </div>
           <div className="pr-firma-block">

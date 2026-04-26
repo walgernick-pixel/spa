@@ -6,7 +6,7 @@ const TIPOS_OBJETIVOS = [
   {id:'venta_spa',       label:'Venta total del spa',      icon:'chart',    color:'var(--moss)',     desc:'Meta de ventas brutas del negocio'},
   {id:'ticket_spa',      label:'Ticket promedio del spa',  icon:'sparkles', color:'var(--ink-blue)', desc:'Valor promedio por servicio vendido'},
   {id:'bono_individual', label:'Bono individual',          icon:'users',    color:'var(--clay)',     desc:'Bono para terapeutas que cumplan metas'},
-  {id:'bono_encargada',  label:'Bono encargada',           icon:'shield',   color:'#b07228',         desc:'% sobre ventas de turnos que abrió'},
+  {id:'bono_encargada',  label:'Bono responsable',         icon:'shield',   color:'#b07228',         desc:'% sobre ventas de turnos que abrió'},
 ];
 
 const ObjetivosFn = () => {

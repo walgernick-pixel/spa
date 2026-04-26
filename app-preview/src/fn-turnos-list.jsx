@@ -317,7 +317,7 @@ const TurnosListFn = () => {
             <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:18}}>
               <div style={{position:'relative',flex:'0 1 280px'}}>
                 <Icon name="search" size={14} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)'}}/>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar folio, encargada, fecha..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar folio, responsable, fecha..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
               </div>
               <FilterSelect label="Periodo" value={preset} onChange={setPreset} options={PRESETS_RANGO.map(p=>({value:p.id,label:p.label}))}/>
               {preset==='custom' && (
@@ -514,7 +514,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
           <>
             <Av name={t.encargada_nombre} tone={(t.encargada_nombre||'').charAt(0).toUpperCase()>='L'?'moss':'clay'} size={22}/>
             <div style={{display:'flex',flexDirection:'column',lineHeight:1.15}}>
-              <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Encargada</span>
+              <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Responsable</span>
               <span style={{fontSize:12,color:'var(--ink-1)',fontWeight:600}}>{t.encargada_nombre.split(' ')[0]}</span>
               {t.abierto_por_nombre && t.abierto_por && t.abierto_por !== t.encargada_id && (
                 <span style={{fontSize:10,color:'var(--ink-3)',marginTop:1}} title={`Click en abrir turno: ${t.abierto_por_nombre}`}>
@@ -524,7 +524,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
             </div>
           </>
         ) : (
-          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargada</span>
+          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin responsable</span>
         )}
       </div>
 

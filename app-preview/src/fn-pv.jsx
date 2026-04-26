@@ -262,8 +262,8 @@ const PVTurnoFn = () => {
                 </select>
               </>
             ) : (
-              <span>Encargado: <strong style={{color:'var(--ink-1)'}}>{
-                perfiles.find(p => p.id === turno.encargada_id)?.nombre_display || 'sin encargado'
+              <span>Responsable: <strong style={{color:'var(--ink-1)'}}>{
+                perfiles.find(p => p.id === turno.encargada_id)?.nombre_display || 'sin responsable'
               }</strong></span>
             )}
           </div>

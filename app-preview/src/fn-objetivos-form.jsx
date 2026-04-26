@@ -126,7 +126,7 @@ const FormObjetivo = ({obj, tipoForzado, periodoForzado, fechaForzada, onSave, o
             {tipo === 'venta_spa' && 'Venta total del spa'}
             {tipo === 'ticket_spa' && 'Ticket promedio del spa'}
             {tipo === 'bono_individual' && 'Bono individual'}
-            {tipo === 'bono_encargada' && 'Bono encargada'}
+            {tipo === 'bono_encargada' && 'Bono responsable'}
           </strong> · <span style={{textTransform:'capitalize'}}>{labelPeriodoObj(periodo, periodoFecha)}</span>
         </div>
       )}
@@ -141,7 +141,7 @@ const FormObjetivo = ({obj, tipoForzado, periodoForzado, fechaForzada, onSave, o
                 <option value="venta_spa">Venta total del spa</option>
                 <option value="ticket_spa">Ticket promedio del spa</option>
                 <option value="bono_individual">Bono individual (terapeutas)</option>
-                <option value="bono_encargada">Bono encargada (% sobre turnos que abrió)</option>
+                <option value="bono_encargada">Bono responsable (% sobre turnos que abrió)</option>
               </select>
             </div>
           )}

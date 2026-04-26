@@ -53,8 +53,8 @@ const CATALOGO_PERMISOS = [
     {id:'config_catalogo_editar',   label:'Editar catálogo de gastos'},
     {id:'config_servicios_ver',     label:'Ver servicios y comisiones'},
     {id:'config_servicios_editar',  label:'Editar servicios y comisiones'},
-    {id:'config_colab_ver',         label:'Ver colaboradoras'},
-    {id:'config_colab_editar',      label:'Editar colaboradoras'},
+    {id:'config_colab_ver',         label:'Ver personal'},
+    {id:'config_colab_editar',      label:'Editar personal'},
   ]},
   { id:'usuarios', label:'Usuarios y roles', permisos: [
     {id:'usuarios_ver',       label:'Ver lista de usuarios'},
