@@ -35,43 +35,104 @@ const hmFromTimestamp = (ts) => {
 };
 
 // ─── Métricas de la semana ───
-const useMetricasSemana = (turnos) => {
+// Helpers de rangos de fecha para filtros del listado
+const rangoTurnos = (preset, customDesde, customHasta) => {
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const fin23 = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+  const ini00 = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const diaSemISO = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
+  switch (preset) {
+    case 'hoy':
+      return { desde: hoy, hasta: fin23(hoy) };
+    case 'semana': {
+      const ini = new Date(hoy); ini.setDate(hoy.getDate() - diaSemISO);
+      const fin = new Date(ini); fin.setDate(ini.getDate() + 6);
+      return { desde: ini00(ini), hasta: fin23(fin) };
+    }
+    case 'semana_pasada': {
+      const ini = new Date(hoy); ini.setDate(hoy.getDate() - diaSemISO - 7);
+      const fin = new Date(ini); fin.setDate(ini.getDate() + 6);
+      return { desde: ini00(ini), hasta: fin23(fin) };
+    }
+    case 'mes': {
+      const ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      const fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+      return { desde: ini00(ini), hasta: fin23(fin) };
+    }
+    case 'mes_pasado': {
+      const ini = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+      return { desde: ini00(ini), hasta: fin23(fin) };
+    }
+    case 'ult_30': {
+      const ini = new Date(hoy); ini.setDate(hoy.getDate() - 29);
+      return { desde: ini00(ini), hasta: fin23(hoy) };
+    }
+    case 'custom':
+      return {
+        desde: customDesde ? ini00(new Date(customDesde + 'T12:00:00')) : null,
+        hasta: customHasta ? fin23(new Date(customHasta + 'T12:00:00')) : null,
+      };
+    case 'todo':
+    default:
+      return { desde: null, hasta: null };
+  }
+};
+
+const PRESETS_RANGO = [
+  { id:'hoy',           label:'Hoy' },
+  { id:'semana',        label:'Esta semana' },
+  { id:'semana_pasada', label:'Semana pasada' },
+  { id:'mes',           label:'Este mes' },
+  { id:'mes_pasado',    label:'Mes pasado' },
+  { id:'ult_30',        label:'Últimos 30 días' },
+  { id:'todo',          label:'Todo' },
+  { id:'custom',        label:'Personalizado' },
+];
+
+const rangoPrevio = (rango) => {
+  if (!rango || !rango.desde || !rango.hasta) return null;
+  const dur = rango.hasta - rango.desde;
+  const desde = new Date(rango.desde.getTime() - dur - 1);
+  const hasta = new Date(rango.desde.getTime() - 1);
+  desde.setHours(0,0,0,0);
+  hasta.setHours(23,59,59,999);
+  return { desde, hasta };
+};
+
+const inRangoIso = (iso, r) => {
+  if (!r) return true;
+  if (!r.desde && !r.hasta) return true;
+  const f = new Date(iso + 'T12:00:00');
+  if (r.desde && f < r.desde) return false;
+  if (r.hasta && f > r.hasta) return false;
+  return true;
+};
+
+// Métricas reactivas al rango filtrado
+const useMetricasRango = (turnos, rango) => {
   return React.useMemo(() => {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    // Semana ISO: lunes–domingo. Ajuste para que domingo sea día 7.
-    const diaSemana = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
-    const inicioSemana = new Date(hoy); inicioSemana.setDate(hoy.getDate() - diaSemana);
-    const finSemana = new Date(inicioSemana); finSemana.setDate(inicioSemana.getDate() + 6);
+    const enRango  = turnos.filter(t => inRangoIso(t.fecha, rango));
+    const prev     = rangoPrevio(rango);
+    const enPrev   = prev ? turnos.filter(t => inRangoIso(t.fecha, prev)) : [];
 
-    // Semana anterior
-    const inicioPrev = new Date(inicioSemana); inicioPrev.setDate(inicioPrev.getDate() - 7);
-    const finPrev = new Date(inicioPrev); finPrev.setDate(finPrev.getDate() + 6);
-
-    const inRange = (iso, desde, hasta) => {
-      const f = new Date(iso + 'T12:00:00');
-      return f >= desde && f <= hasta;
-    };
-
-    const semana = turnos.filter(t => inRange(t.fecha, inicioSemana, finSemana));
-    const prev   = turnos.filter(t => inRange(t.fecha, inicioPrev, finPrev));
-
-    const totalSem = semana.reduce((a,b)=>a+Number(b.total_mxn||0),0);
-    const totalPrev= prev.reduce((a,b)=>a+Number(b.total_mxn||0),0);
-    const svcs     = semana.reduce((a,b)=>a+Number(b.n_servicios||0),0);
-    const svcsPrev = prev.reduce((a,b)=>a+Number(b.n_servicios||0),0);
-    const tick     = svcs>0 ? totalSem/svcs : 0;
+    const total    = enRango.reduce((a,b)=>a+Number(b.total_mxn||0),0);
+    const totalPrev= enPrev.reduce((a,b)=>a+Number(b.total_mxn||0),0);
+    const svcs     = enRango.reduce((a,b)=>a+Number(b.n_servicios||0),0);
+    const svcsPrev = enPrev.reduce((a,b)=>a+Number(b.n_servicios||0),0);
+    const tick     = svcs>0 ? total/svcs : 0;
     const tickPrev = svcsPrev>0 ? totalPrev/svcsPrev : 0;
+    const nTurnos  = enRango.length;
     const abiertos = turnos.filter(t => t.estado === 'abierto').length;
 
-    const pct = (now, prev) => prev>0 ? Math.round((now-prev)/prev*100) : null;
-
+    const pct = (a, b) => b>0 ? Math.round((a-b)/b*100) : null;
     return {
-      totalSem, totalPrev, svcs, tick,
-      deltaTotal: pct(totalSem, totalPrev),
-      deltaTick:  pct(tick, tickPrev),
-      abiertos
+      total, totalPrev, svcs, tick, nTurnos, abiertos,
+      deltaTotal: prev ? pct(total, totalPrev) : null,
+      deltaTick:  prev ? pct(tick, tickPrev)  : null,
+      hasPrev: !!prev,
     };
-  }, [turnos]);
+  }, [turnos, rango]);
 };
 
 // ─── Pantalla principal ───
@@ -81,6 +142,11 @@ const TurnosListFn = () => {
   const [loading, setLoading]     = React.useState(true);
   const [abriendo, setAbriendo]   = React.useState(false);
   const [modalRetro, setModalR]   = React.useState(false);
+  const [preset, setPreset]       = React.useState('semana');
+  const [customDesde, setCustomD] = React.useState('');
+  const [customHasta, setCustomH] = React.useState('');
+  const [estadoF, setEstadoF]     = React.useState('todos'); // todos | abierto | cerrado
+  const [search, setSearch]       = React.useState('');
 
   const cargar = React.useCallback(async () => {
     setLoading(true);
@@ -131,7 +197,31 @@ const TurnosListFn = () => {
 
   React.useEffect(() => { cargar(); }, [cargar]);
 
-  const metricas = useMetricasSemana(turnos);
+  const rango = React.useMemo(
+    () => rangoTurnos(preset, customDesde, customHasta),
+    [preset, customDesde, customHasta]
+  );
+
+  const turnosFiltrados = React.useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return turnos.filter(t => {
+      if (!inRangoIso(t.fecha, rango)) return false;
+      if (estadoF !== 'todos' && t.estado !== estadoF) return false;
+      if (s) {
+        const enc = (t.encargada_nombre || '').toLowerCase();
+        const fol = String(t.folio || '').toLowerCase();
+        const fec = (t.fecha || '');
+        if (!enc.includes(s) && !fol.includes(s) && !fec.includes(s)) return false;
+      }
+      return true;
+    });
+  }, [turnos, rango, estadoF, search]);
+
+  const metricas = useMetricasRango(turnosFiltrados, rango);
+
+  const labelPreset = (PRESETS_RANGO.find(p => p.id === preset) || {}).label || 'Periodo';
+  const limpiarFiltros = () => { setPreset('semana'); setCustomD(''); setCustomH(''); setEstadoF('todos'); setSearch(''); };
+  const hayFiltros = preset !== 'semana' || estadoF !== 'todos' || search;
 
   const abrirTurno = async () => {
     if (abriendo) return;
@@ -216,18 +306,42 @@ const TurnosListFn = () => {
 
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{padding:'24px 36px 40px'}}>
-            {/* Métricas de la semana */}
+            {/* Filtros: periodo + estado + búsqueda */}
+            <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:18}}>
+              <div style={{position:'relative',flex:'0 1 280px'}}>
+                <Icon name="search" size={14} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)'}}/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar folio, encargada, fecha..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
+              </div>
+              <FilterSelect label="Periodo" value={preset} onChange={setPreset} options={PRESETS_RANGO.map(p=>({value:p.id,label:p.label}))}/>
+              {preset==='custom' && (
+                <>
+                  <input type="date" value={customDesde} onChange={e=>setCustomD(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
+                  <span style={{fontSize:12,color:'var(--ink-3)'}}>→</span>
+                  <input type="date" value={customHasta} onChange={e=>setCustomH(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
+                </>
+              )}
+              <FilterSelect label="Estado" value={estadoF} onChange={setEstadoF} options={[
+                {value:'todos',label:'Todos'},
+                {value:'abierto',label:'Abierto'},
+                {value:'cerrado',label:'Cerrado'},
+              ]}/>
+              {hayFiltros && (
+                <button onClick={limpiarFiltros} style={{marginLeft:'auto',background:'transparent',border:'none',fontSize:12,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,textDecoration:'underline',textUnderlineOffset:3}}>Limpiar filtros</button>
+              )}
+            </div>
+
+            {/* Métricas reactivas al rango filtrado */}
             <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:28}}>
               <MetricCell
-                lbl="Semana actual"
-                value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.totalSem} size={28}/>}
-                sub={metricas.deltaTotal!==null ? 'vs semana pasada' : 'sin semana previa'}
+                lbl={`Ventas · ${labelPreset}`}
+                value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.total} size={28}/>}
+                sub={metricas.hasPrev ? (metricas.deltaTotal!==null ? 'vs período anterior' : 'sin período previo') : 'período total'}
                 delta={metricas.deltaTotal}
               />
               <MetricCell
                 lbl="Servicios"
                 value={loading? <Skeleton w={60} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.5}} className="num">{metricas.svcs}</span>}
-                sub="realizados"
+                sub={`en ${metricas.nTurnos} ${metricas.nTurnos===1?'turno':'turnos'}`}
               />
               <MetricCell
                 lbl="Ticket promedio"
@@ -243,8 +357,8 @@ const TurnosListFn = () => {
             </div>
 
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)'}}>Últimos turnos</div>
-              <div style={{fontSize:11,color:'var(--ink-3)'}}>{turnos.length} {turnos.length===1?'turno':'turnos'}</div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)'}}>Turnos en {labelPreset.toLowerCase()}</div>
+              <div style={{fontSize:11,color:'var(--ink-3)'}}>{turnosFiltrados.length} {turnosFiltrados.length===1?'turno':'turnos'}{turnosFiltrados.length!==turnos.length && ` de ${turnos.length}`}</div>
             </div>
 
             {/* Lista de turnos */}
@@ -254,9 +368,15 @@ const TurnosListFn = () => {
               </div>
             ) : turnos.length === 0 ? (
               <EmptyTurnos onAbrir={abrirTurno} abriendo={abriendo}/>
+            ) : turnosFiltrados.length === 0 ? (
+              <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
+                <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>No hay turnos con estos filtros</div>
+                <div style={{fontSize:13,color:'var(--ink-2)',marginBottom:16}}>Prueba ampliando el período o cambiando los filtros.</div>
+                <Btn variant="ghost" size="md" onClick={limpiarFiltros}>Limpiar filtros</Btn>
+              </div>
             ) : (
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
-                {turnos.map((t,i)=>(<TurnoRowFn key={t.id} t={t} first={i===0} onClick={()=>abrirTurnoFila(t)}/>))}
+                {turnosFiltrados.map((t,i)=>(<TurnoRowFn key={t.id} t={t} first={i===0} onClick={()=>abrirTurnoFila(t)}/>))}
               </div>
             )}
           </div>
@@ -364,11 +484,11 @@ const TurnoRowFn = ({t, first, onClick}) => {
     <div
       onClick={onClick}
       className="cf-turno-row"
-      style={{display:'grid',gridTemplateColumns:'auto 1fr auto auto auto auto',alignItems:'center',gap:24,padding:'18px 22px',borderTop:first?'none':'1px solid var(--line-1)',background:rowBg,cursor:'pointer',transition:'background .15s'}}
+      style={{display:'grid',gridTemplateColumns:'auto 1fr auto auto auto',alignItems:'center',gap:24,padding:'18px 22px',borderTop:first?'none':'1px solid var(--line-1)',background:rowBg,cursor:'pointer',transition:'background .15s'}}
       onMouseEnter={e=>{ if (t.estado!=='abierto') e.currentTarget.style.background='var(--paper-sunk)'; }}
       onMouseLeave={e=>{ if (t.estado!=='abierto') e.currentTarget.style.background='transparent'; }}
     >
-      {/* Status dot + fecha */}
+      {/* Status dot + fecha + horario (sin "X svc" — ya hay columna dedicada) */}
       <div className="cf-tr-fecha" style={{display:'flex',alignItems:'center',gap:12,minWidth:0}}>
         <div style={{width:8,height:8,borderRadius:999,background:s.dot,boxShadow:t.estado==='abierto'?'0 0 0 4px rgba(79,107,58,.18)':'none',flexShrink:0}}/>
         <div style={{minWidth:0}}>
@@ -377,32 +497,28 @@ const TurnoRowFn = ({t, first, onClick}) => {
             {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
             {Number(t.reaperturas)>0 && <span title={t.reabierto_at?`Última reapertura: ${new Date(t.reabierto_at).toLocaleDateString('es-MX')}`:'Reabierto'} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.08)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.25)'}}>Reabierto {t.reaperturas}×</span>}
           </div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin} · {t.n_servicios||0} svc</div>
+          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}</div>
         </div>
       </div>
 
-      {/* Timeline bar */}
-      <div className="cf-hide-narrow" style={{position:'relative',height:6,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden'}}>
-        <TimelineBarFn inicio={t.hora_inicio} fin={t.hora_fin} abierto={t.estado==='abierto'}/>
-      </div>
-
-      {/* Encargada — quien abrió el turno (solo desktop) */}
-      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:110}} title="Abrió el turno">
+      {/* Encargada (con flag visual de quién abrió debajo) */}
+      <div className="cf-hide-narrow" style={{display:'flex',alignItems:'center',gap:7,minWidth:130}}>
         {t.encargada_nombre ? (
           <>
             <Av name={t.encargada_nombre} tone={(t.encargada_nombre||'').charAt(0).toUpperCase()>='L'?'moss':'clay'} size={22}/>
-            <div style={{display:'flex',flexDirection:'column',lineHeight:1.1}}>
-              <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Abrió</span>
-              <span style={{fontSize:12,color:'var(--ink-2)'}}>{t.encargada_nombre.split(' ')[0]}</span>
+            <div style={{display:'flex',flexDirection:'column',lineHeight:1.15}}>
+              <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase'}}>Encargada</span>
+              <span style={{fontSize:12,color:'var(--ink-1)',fontWeight:600}}>{t.encargada_nombre.split(' ')[0]}</span>
+              <span style={{fontSize:10,color:'var(--ink-3)',marginTop:1}}>abrió {t.encargada_nombre.split(' ')[0]}</span>
             </div>
           </>
         ) : (
-          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargado</span>
+          <span style={{fontSize:12,color:'var(--ink-3)',fontStyle:'italic'}}>sin encargada</span>
         )}
       </div>
 
-      {/* Servicios (solo desktop) */}
-      <div className="num cf-hide-narrow" style={{fontSize:13,color:'var(--ink-2)',minWidth:70,textAlign:'right'}}>
+      {/* Servicios */}
+      <div className="num cf-hide-narrow" style={{fontSize:13,color:'var(--ink-2)',minWidth:60,textAlign:'right'}}>
         <span style={{fontWeight:600,color:'var(--ink-0)'}}>{t.n_servicios||0}</span> svc
       </div>
 
@@ -458,31 +574,5 @@ const ArqueoChip = ({status, difMxn}) => {
   return null;
 };
 
-// ─── Timeline bar ───
-const TimelineBarFn = ({inicio, fin, abierto}) => {
-  if (!inicio) return null;
-  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
-  const now = new Date();
-  const nowMin = now.getHours()*60 + now.getMinutes();
-  const open  = toMin(inicio);
-  const close = fin ? toMin(fin) : (abierto ? nowMin : toMin('16:30'));
-  const dayStart = 8*60, dayEnd = 22*60;
-  const left  = Math.max(0, ((open - dayStart) / (dayEnd - dayStart)) * 100);
-  const width = Math.max(2, ((close - open) / (dayEnd - dayStart)) * 100);
-  return (
-    <>
-      <div style={{position:'absolute',left:left+'%',width:width+'%',top:0,bottom:0,background:abierto?'var(--moss)':'var(--ink-4)',borderRadius:3}}/>
-      {abierto && (
-        <div style={{position:'absolute',left:`calc(${left+width}% - 3px)`,top:-2,width:10,height:10,borderRadius:999,background:'var(--moss)',boxShadow:'0 0 0 3px rgba(79,107,58,.25)'}}/>
-      )}
-    </>
-  );
-};
-
-// ─── Skeleton ───
-const SkeletonT = ({w=80, h=14}) => (
-  <div style={{width:w,height:h,background:'var(--line-1)',borderRadius:4,opacity:.5,display:'inline-block'}}/>
-);
-
 // Sobreescribe el mock
-Object.assign(window, { TurnosList: TurnosListFn, TurnoRowFn, TimelineBarFn });
+Object.assign(window, { TurnosList: TurnosListFn, TurnoRowFn });
