@@ -40,7 +40,7 @@ const FormColab = ({colab, onSave, onCancel}) => {
     else          ({error} = await sb.from('colaboradoras').insert(payload));
     setSaving(false);
     if (error) return notify('Error: '+error.message, 'err');
-    notify(editando ? 'Colaborador actualizado' : 'Colaborador creado');
+    notify(editando ? 'Datos actualizados' : 'Persona agregada');
     onSave();
   };
 
@@ -121,8 +121,8 @@ const ConfigColabFn = () => {
   const borrar = async (c) => {
     if (!confirmar(`¿Borrar a "${c.nombre}"?\n\nSi tiene ventas asociadas no se podrá borrar; archívala.`)) return;
     const {error} = await sb.from('colaboradoras').delete().eq('id', c.id);
-    if (error) return notify('No se pudo borrar. Tiene ventas asociadas — archívala en su lugar.','err');
-    notify('Colaborador borrado');
+    if (error) return notify('No se pudo borrar. Tiene ventas asociadas — archívalo en su lugar.','err');
+    notify('Persona eliminada');
     cargar();
   };
 
@@ -167,7 +167,7 @@ const ConfigColabFn = () => {
         <div style={{padding:'28px 36px 18px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16}}>
           <div>
             <div style={{fontSize:11,color:'var(--ink-3)',fontWeight:600,letterSpacing:.5,textTransform:'uppercase',marginBottom:6}}>Configuración</div>
-            <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Colaboradores</div>
+            <div style={{fontFamily:'var(--serif)',fontSize:34,fontWeight:500,letterSpacing:-.8,color:'var(--ink-0)',lineHeight:1}}>Personal</div>
             <div style={{fontSize:13,color:'var(--ink-2)',marginTop:6}}>{activas.length} activos · {archivadas.length} archivados</div>
           </div>
           <Btn variant="clay" size="md" icon="plus" onClick={()=>setModal({tipo:'nueva'})}>Agregar colaborador</Btn>

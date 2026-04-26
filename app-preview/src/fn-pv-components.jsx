@@ -248,13 +248,13 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <span style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1}}>{c.nombre}</span>
             {!c.pagado && <Chip tone="amber">Pendiente de pago</Chip>}
-            {c.pagado && !c.firmaDataUrl && <Chip tone="ocean"><Icon name="check" size={9} stroke={2.4}/>Pagada · sin firmar</Chip>}
-            {c.pagado && c.firmaDataUrl && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Pagada y firmada</Chip>}
+            {c.pagado && !c.firmaDataUrl && <Chip tone="ocean"><Icon name="check" size={9} stroke={2.4}/>Pagado · sin firmar</Chip>}
+            {c.pagado && c.firmaDataUrl && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Pagado y firmado</Chip>}
           </div>
           <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:2}}>
-            {ejecutadas.length>0 && <>{ejecutadas.length} {ejecutadas.length===1?'servicio':'servicios'} ejecutados</>}
+            {ejecutadas.length>0 && <span title="Servicios ejecutados">{ejecutadas.length} svc</span>}
             {ejecutadas.length>0 && vendidas.length>0 && ' · '}
-            {vendidas.length>0 && <span style={{color:'var(--ink-blue)',fontWeight:500}}>{vendidas.length} {vendidas.length===1?'venta':'ventas'} a otras</span>}
+            {vendidas.length>0 && <span title="Comisión por venta (vendiste a otra persona)" style={{color:'var(--ink-blue)',fontWeight:500}}>{vendidas.length} cv</span>}
           </div>
         </div>
         <div style={{textAlign:'right',marginRight:10,display:'flex',gap:16,alignItems:'flex-start'}}>
@@ -334,8 +334,8 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                     <span>Com. venta <strong className="num" style={{color:'var(--ink-blue)'}}>{sym}{grupo.comisionVenta.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
                   )}
                   <div style={{flex:1}}/>
-                  {grupo.ejecutadas.length > 0 && <span>· {grupo.ejecutadas.length} ejecutado{grupo.ejecutadas.length!==1?'s':''}</span>}
-                  {grupo.vendidas.length > 0 && <span>· {grupo.vendidas.length} vendido{grupo.vendidas.length!==1?'s':''}</span>}
+                  {grupo.ejecutadas.length > 0 && <span title="Servicios ejecutados">· {grupo.ejecutadas.length} svc</span>}
+                  {grupo.vendidas.length > 0 && <span title="Comisión por venta">· {grupo.vendidas.length} cv</span>}
                 </div>
 
                 {/* Servicios ejecutados en esta moneda */}
@@ -369,10 +369,10 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                   </div>
                 )}
 
-                {/* Ventas hechas a otras en esta moneda */}
+                {/* Comisión por venta (vendió a otra persona) en esta moneda */}
                 {grupo.vendidas.length > 0 && (
                   <div style={{background:'rgba(55,138,221,.04)'}}>
-                    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Ventas hechas a otras</div>
+                    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Comisión por venta</div>
                     {grupo.vendidas.map((v,idx) => (
                       <div key={`${v.id}-${v._splitIdx ?? 'x'}-v${idx}`} style={{display:'grid',gridTemplateColumns:'1fr 100px 110px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
@@ -695,13 +695,13 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
         <div style={{marginBottom:14,padding:'12px 14px',background:'var(--sand-100)',border:'1px solid #ecd49a',borderRadius:10}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
             <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--clay)'}}>Comisión por venta</div>
-            <div style={{fontSize:11,color:'var(--ink-3)'}}>Este canal permite +{cvPctNum}% al vendedor</div>
+            <div style={{fontSize:11,color:'var(--ink-3)'}}>Este canal permite +{cvPctNum}% para quien vende</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 140px',gap:12,alignItems:'end'}}>
             <div>
-              <label style={labelStyle}>Vendedor/a (opcional)</label>
+              <label style={labelStyle}>Quien vende (opcional)</label>
               <select value={vendedoraId} onChange={e=>setVendedora(e.target.value)} style={fieldStyle}>
-                <option value="">— Sin vendedor (quien ejecuta también vendió) —</option>
+                <option value="">— Quien ejecuta también vendió —</option>
                 {colabsDisponibles.filter(c=>c.id!==colabId).map(c=><option key={c.id} value={c.id}>{c.alias || `${c.nombre}${c.apellidos?' '+c.apellidos:''}`}</option>)}
               </select>
             </div>

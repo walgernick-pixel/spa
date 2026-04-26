@@ -667,9 +667,9 @@ const DashboardFn = () => {
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(360px, 1fr))',gap:16,marginBottom:20}}>
               {/* Top colabs */}
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:18}}>
-                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:12}}>Top colaboradoras</div>
+                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:12}}>Top del personal</div>
                 {derivado.colabsOrd.length === 0 ? (
-                  <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin colaboradoras con ventas</div>
+                  <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin personal con ventas</div>
                 ) : (
                   <TopColabsTable colabs={derivado.colabsOrd.slice(0,10)} onColabClick={(c)=>abrirDrill('colab', c.id, `Ventas de ${c.nombre}`)}/>
                 )}
@@ -698,7 +698,7 @@ const DashboardFn = () => {
             {/* Ranking por encargado + Turnos del periodo */}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(360px, 1fr))',gap:16,marginBottom:20}}>
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:14,padding:18}}>
-                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Ranking por encargado</div>
+                <div style={{fontFamily:'var(--serif)',fontSize:15,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2,marginBottom:3}}>Ranking por responsable</div>
                 <div style={{fontSize:11,color:'var(--ink-3)',marginBottom:12}}>Quién abrió los turnos y cuánto vendió</div>
                 {derivado.encargadasOrd.length === 0 ? (
                   <div style={{padding:20,textAlign:'center',color:'var(--ink-3)',fontSize:12}}>Sin turnos en este periodo</div>
@@ -848,7 +848,7 @@ const DrillVentasTable = ({items, monedas}) => {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:2}}>
       <div style={{display:'grid',gridTemplateColumns:'80px 1fr 130px 110px 100px 90px 100px',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)',background:'var(--paper-sunk)'}}>
-        <div>Fecha</div><div>Servicio</div><div>Colaboradora</div><div>Canal</div><div>Cuenta</div><div className="num" style={{textAlign:'right'}}>Precio</div><div className="num" style={{textAlign:'right'}}>Comisión</div>
+        <div>Fecha</div><div>Servicio</div><div>Personal</div><div>Canal</div><div>Cuenta</div><div className="num" style={{textAlign:'right'}}>Precio</div><div className="num" style={{textAlign:'right'}}>Comisión</div>
       </div>
       {items.map(v => (
         <div key={v.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 130px 110px 100px 90px 100px',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderBottom:'1px solid var(--line-2)'}}>
