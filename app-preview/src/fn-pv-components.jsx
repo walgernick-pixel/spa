@@ -248,13 +248,13 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <span style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.1}}>{c.nombre}</span>
             {!c.pagado && <Chip tone="amber">Pendiente de pago</Chip>}
-            {c.pagado && !c.firmaDataUrl && <Chip tone="ocean"><Icon name="check" size={9} stroke={2.4}/>Pagada · sin firmar</Chip>}
-            {c.pagado && c.firmaDataUrl && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Pagada y firmada</Chip>}
+            {c.pagado && !c.firmaDataUrl && <Chip tone="ocean"><Icon name="check" size={9} stroke={2.4}/>Pagado · sin firmar</Chip>}
+            {c.pagado && c.firmaDataUrl && <Chip tone="moss"><Icon name="check" size={9} stroke={2.4}/>Pagado y firmado</Chip>}
           </div>
           <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:2}}>
-            {ejecutadas.length>0 && <>{ejecutadas.length} {ejecutadas.length===1?'servicio':'servicios'} ejecutados</>}
+            {ejecutadas.length>0 && <span title="Servicios ejecutados">{ejecutadas.length} svc</span>}
             {ejecutadas.length>0 && vendidas.length>0 && ' · '}
-            {vendidas.length>0 && <span style={{color:'var(--ink-blue)',fontWeight:500}}>{vendidas.length} {vendidas.length===1?'venta':'ventas'} a otras</span>}
+            {vendidas.length>0 && <span title="Comisión por venta (vendiste a otra persona)" style={{color:'var(--ink-blue)',fontWeight:500}}>{vendidas.length} cv</span>}
           </div>
         </div>
         <div style={{textAlign:'right',marginRight:10,display:'flex',gap:16,alignItems:'flex-start'}}>
@@ -334,8 +334,8 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                     <span>Com. venta <strong className="num" style={{color:'var(--ink-blue)'}}>{sym}{grupo.comisionVenta.toLocaleString('es-MX',{maximumFractionDigits:2})}</strong></span>
                   )}
                   <div style={{flex:1}}/>
-                  {grupo.ejecutadas.length > 0 && <span>· {grupo.ejecutadas.length} ejecutado{grupo.ejecutadas.length!==1?'s':''}</span>}
-                  {grupo.vendidas.length > 0 && <span>· {grupo.vendidas.length} vendido{grupo.vendidas.length!==1?'s':''}</span>}
+                  {grupo.ejecutadas.length > 0 && <span title="Servicios ejecutados">· {grupo.ejecutadas.length} svc</span>}
+                  {grupo.vendidas.length > 0 && <span title="Comisión por venta">· {grupo.vendidas.length} cv</span>}
                 </div>
 
                 {/* Servicios ejecutados en esta moneda */}
