@@ -13,6 +13,7 @@ const GastosHome = () => {
   // El "Resumen" se eliminó: ahora el Dashboard general lo cubre (gastos integrados con ventas)
   const tabs = [
     {id:'lista',   label:'Lista',   icon:'receipt'},
+    ...(can('gastos_papelera') ? [{id:'papelera', label:'Papelera', icon:'trash'}] : []),
   ];
 
   return (
@@ -38,6 +39,7 @@ const GastosHome = () => {
       {/* Contenido del tab */}
       <div style={{flex:1,overflow:'auto'}}>
         {sub==='lista'   && <GastosList onRowClick={(gid)=>navigate('gastos/detalle/'+gid)} onNew={()=>navigate('gastos/nuevo')}/>}
+        {sub==='papelera'&& (can('gastos_papelera') ? <GastosPapelera/> : <PapeleraSinPermiso/>)}
         {sub==='resumen' && <GastosResumen/>}
         {sub==='nuevo'   && <GastosForm onCancel={()=>navigate('gastos/lista')} onSave={(gid)=>navigate(gid?'gastos/detalle/'+gid:'gastos/lista')}/>}
         {sub==='detalle' && id && <GastosDetalle gastoId={id} onBack={()=>navigate('gastos/lista')} onEdit={()=>navigate('gastos/editar/'+id)}/>}
@@ -54,6 +56,14 @@ const DetalleSinId = () => (
     <div style={{fontFamily:'var(--serif)',fontSize:20,color:'var(--ink-1)',marginBottom:8}}>Selecciona un gasto</div>
     <div>Vuelve a la lista y toca cualquier fila.</div>
     <div style={{marginTop:16}}><Btn variant="secondary" onClick={()=>navigate('gastos/lista')}>← Ir a la lista</Btn></div>
+  </div>
+);
+
+const PapeleraSinPermiso = () => (
+  <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13,fontFamily:'var(--sans)'}}>
+    <div style={{fontFamily:'var(--serif)',fontSize:20,color:'var(--ink-1)',marginBottom:8}}>Sin acceso a la papelera</div>
+    <div>Tu rol no tiene el permiso <code>gastos_papelera</code>.</div>
+    <div style={{marginTop:16}}><Btn variant="secondary" onClick={()=>navigate('gastos/lista')}>← Volver a la lista</Btn></div>
   </div>
 );
 
