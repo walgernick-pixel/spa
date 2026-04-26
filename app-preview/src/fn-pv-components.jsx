@@ -369,10 +369,10 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
                   </div>
                 )}
 
-                {/* Ventas hechas a otras en esta moneda */}
+                {/* Comisión por venta (vendió a otra persona) en esta moneda */}
                 {grupo.vendidas.length > 0 && (
                   <div style={{background:'rgba(55,138,221,.04)'}}>
-                    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Ventas hechas a otras</div>
+                    <div style={{fontSize:9.5,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',color:'var(--ink-blue)',padding:'7px 14px 4px'}}>Comisión por venta</div>
                     {grupo.vendidas.map((v,idx) => (
                       <div key={`${v.id}-${v._splitIdx ?? 'x'}-v${idx}`} style={{display:'grid',gridTemplateColumns:'1fr 100px 110px',gap:10,alignItems:'center',padding:'8px 14px',fontSize:12.5,borderTop:'1px solid var(--line-2)'}}>
                         <div>
