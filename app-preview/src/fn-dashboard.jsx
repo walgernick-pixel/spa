@@ -59,6 +59,21 @@ const rangoPreset = (preset) => {
   }
 };
 
+// Etiqueta corta del período inmediatamente anterior, según el preset elegido
+const labelPeriodoPrev = (preset) => {
+  switch (preset) {
+    case 'hoy':          return 'vs ayer';
+    case 'ayer':         return 'vs antier';
+    case 'semana':       return 'vs semana pasada';
+    case 'mes_actual':   return 'vs mes anterior';
+    case 'mes_anterior': return 'vs mes previo';
+    case 'ult_3m':       return 'vs trimestre anterior';
+    case 'anio':         return 'vs año anterior';
+    case 'custom':       return 'vs período previo';
+    default:             return 'vs período anterior';
+  }
+};
+
 // ─── Componente del dashboard ───
 const DashboardFn = () => {
   const [preset, setPreset]     = React.useState('mes_actual');
@@ -631,15 +646,30 @@ const DashboardFn = () => {
 
         {!loading && derivado && (
           <>
-            {/* KPIs — 3 cols siempre en desktop para evitar huecos */}
-            <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
-              <KpiCard label="Ventas" value={derivado.totalVentas} color="var(--ink-0)" sub={`${derivado.nServicios} servicios`} delta={deltas?.ventas}/>
-              <KpiCard label="Gastos" value={derivado.totalGastos} color="#b73f5e" sub={`${data.gastos.length} gastos`} delta={deltas?.gastos} deltaInverted/>
-              <KpiCard label="Neto al spa" value={derivado.netoSpa} color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'} sub="ventas − com. − gastos" delta={deltas?.neto} big/>
-              <KpiCard label="Comisiones" value={derivado.totalComis} color="var(--clay)" sub="a terapeutas" delta={deltas?.comis} deltaInverted/>
-              <KpiCard label="Ticket promedio" value={derivado.tickProm} color="var(--ink-0)" sub={`${derivado.nTurnos} turnos`}/>
-              <KpiCard label="Dif. arqueos" value={derivado.difArqueos} color={Math.abs(derivado.difArqueos) < 1 ? 'var(--moss)' : (derivado.difArqueos > 0 ? 'var(--moss)' : '#b73f5e')} sub={Math.abs(derivado.difArqueos) < 1 ? 'cuadra' : (derivado.difArqueos > 0 ? 'sobrante' : 'faltante')} signed/>
-            </div>
+            {/* KPIs — 3 cols. Fila 1: P&L con % de ventas. Fila 2: operación. */}
+            {(() => {
+              const vs       = labelPeriodoPrev(preset);
+              const ventas   = derivado.totalVentas || 0;
+              const pctOf    = (n) => ventas > 0 ? `${(n/ventas*100).toFixed(1)}%` : '—';
+              const dif      = derivado.difArqueos || 0;
+              const arqAbs   = Math.abs(dif);
+              const arqTxt   = arqAbs < 1 ? 'arqueos cuadran' : (dif > 0 ? `arq +$${Math.round(arqAbs).toLocaleString('es-MX')} sobró` : `arq −$${Math.round(arqAbs).toLocaleString('es-MX')} faltó`);
+              const arqColor = arqAbs < 1 ? 'var(--moss)' : (dif > 0 ? 'var(--moss)' : '#b73f5e');
+              return (
+                <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
+                  {/* Fila 1: P&L (cómo se reparte cada peso vendido) */}
+                  <KpiCard label="Ventas"      value={ventas}                 color="var(--ink-0)" sub={`100% · ${vs}`}                                                   delta={deltas?.ventas}  vsLabel={vs}/>
+                  <KpiCard label="Comisiones"  value={derivado.totalComis}    color="var(--clay)"  sub={`${pctOf(derivado.totalComis)} de ventas · ${vs}`}                delta={deltas?.comis}   deltaInverted vsLabel={vs}/>
+                  <KpiCard label="Gastos"      value={derivado.totalGastos}   color="#b73f5e"      sub={`${pctOf(derivado.totalGastos)} de ventas · ${vs}`}               delta={deltas?.gastos}  deltaInverted vsLabel={vs}/>
+                  {/* Fila 2: operación + neto */}
+                  <KpiCard label="Neto al spa" value={derivado.netoSpa}       color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'}
+                           sub={<>{pctOf(derivado.netoSpa)} de ventas · <span style={{color:arqColor,fontWeight:600}}>{arqTxt}</span></>}
+                           delta={deltas?.neto} big vsLabel={vs}/>
+                  <KpiCard label="Servicios"   value={derivado.nServicios||0} color="var(--ink-0)" sub={`en ${derivado.nTurnos||0} turnos · ${vs}`}                       delta={deltas?.servicios} numberOnly vsLabel={vs}/>
+                  <KpiCard label="Ticket promedio" value={derivado.tickProm}  color="var(--ink-0)" sub={`por servicio · ${vs}`}/>
+                </div>
+              );
+            })()}
 
             {/* Sección Fiscal (solo si config_fiscal.activo) */}
             {derivado.fiscal && <FiscalSection f={derivado.fiscal}/>}
@@ -1048,8 +1078,12 @@ const ChartTendencia = ({datos}) => {
 };
 
 // ─── KPI card con delta opcional ───
-const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted}) => {
+const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted, numberOnly, vsLabel}) => {
   const fmt = (n) => {
+    if (numberOnly) {
+      const prefix = signed && n < 0 ? '−' : (signed && n > 0 ? '+' : '');
+      return `${prefix}${Math.round(n).toLocaleString('es-MX')}`;
+    }
     const abs = Math.abs(n);
     const prefix = signed && n < 0 ? '−' : (signed && n > 0 ? '+' : '');
     return `${prefix}$${Math.round(abs).toLocaleString('es-MX')}`;
@@ -1062,7 +1096,7 @@ const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted}) 
     const color = esBueno ? 'var(--moss)' : '#b73f5e';
     const arrow = positivo ? '▲' : '▼';
     deltaNode = (
-      <span style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10.5,color,fontWeight:600}}>
+      <span title={vsLabel || 'vs período anterior'} style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10.5,color,fontWeight:600}}>
         {arrow} {Math.abs(delta).toFixed(1)}%
       </span>
     );
