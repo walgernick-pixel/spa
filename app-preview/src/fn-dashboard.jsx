@@ -658,15 +658,15 @@ const DashboardFn = () => {
               return (
                 <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
                   {/* Fila 1: P&L (cómo se reparte cada peso vendido) */}
-                  <KpiCard label="Ventas"      value={ventas}                 color="var(--ink-0)" sub={`100% · ${vs}`}                                                   delta={deltas?.ventas}  vsLabel={vs}/>
-                  <KpiCard label="Comisiones"  value={derivado.totalComis}    color="var(--clay)"  sub={`${pctOf(derivado.totalComis)} de ventas · ${vs}`}                delta={deltas?.comis}   deltaInverted vsLabel={vs}/>
-                  <KpiCard label="Gastos"      value={derivado.totalGastos}   color="#b73f5e"      sub={`${pctOf(derivado.totalGastos)} de ventas · ${vs}`}               delta={deltas?.gastos}  deltaInverted vsLabel={vs}/>
+                  <KpiCard label="Ventas"      value={ventas}                 color="var(--ink-0)" sub="100% del total"                                          delta={deltas?.ventas}  vsLabel={vs}/>
+                  <KpiCard label="Comisiones"  value={derivado.totalComis}    color="var(--clay)"  sub={`${pctOf(derivado.totalComis)} de ventas`}               delta={deltas?.comis}   deltaInverted vsLabel={vs}/>
+                  <KpiCard label="Gastos"      value={derivado.totalGastos}   color="#b73f5e"      sub={`${pctOf(derivado.totalGastos)} de ventas`}              delta={deltas?.gastos}  deltaInverted vsLabel={vs}/>
                   {/* Fila 2: operación + neto */}
                   <KpiCard label="Neto al spa" value={derivado.netoSpa}       color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'}
                            sub={<>{pctOf(derivado.netoSpa)} de ventas · <span style={{color:arqColor,fontWeight:600}}>{arqTxt}</span></>}
                            delta={deltas?.neto} big vsLabel={vs}/>
-                  <KpiCard label="Servicios"   value={derivado.nServicios||0} color="var(--ink-0)" sub={`en ${derivado.nTurnos||0} turnos · ${vs}`}                       delta={deltas?.servicios} numberOnly vsLabel={vs}/>
-                  <KpiCard label="Ticket promedio" value={derivado.tickProm}  color="var(--ink-0)" sub={`por servicio · ${vs}`}/>
+                  <KpiCard label="Servicios"   value={derivado.nServicios||0} color="var(--ink-0)" sub={`en ${derivado.nTurnos||0} turnos`}                       delta={deltas?.servicios} numberOnly vsLabel={vs}/>
+                  <KpiCard label="Ticket promedio" value={derivado.tickProm}  color="var(--ink-0)" sub="por servicio"/>
                 </div>
               );
             })()}
@@ -1096,9 +1096,10 @@ const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted, n
     const color = esBueno ? 'var(--moss)' : '#b73f5e';
     const arrow = positivo ? '▲' : '▼';
     deltaNode = (
-      <span title={vsLabel || 'vs período anterior'} style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10.5,color,fontWeight:600}}>
-        {arrow} {Math.abs(delta).toFixed(1)}%
-      </span>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:1.15}}>
+        <span style={{fontSize:10.5,color,fontWeight:600}}>{arrow} {Math.abs(delta).toFixed(1)}%</span>
+        {vsLabel && <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:500,letterSpacing:.1,textTransform:'none'}}>{vsLabel}</span>}
+      </div>
     );
   }
   return (
