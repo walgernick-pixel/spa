@@ -100,14 +100,17 @@ where not exists (
 );
 
 -- ─────────────────────────────────────────────────────────────
--- 4) turno_colaboradoras — TODOS los que aparecen (con o sin venta).
---    Marcadas como pagadas hoy.
+-- 4) turno_colaboradoras — solo personas con ventas (las de 0
+--    no aportan a comisiones; el conteo de presencia se infiere
+--    de las ventas en sí). La presencia de Laura aún se usa
+--    arriba para definir encargada, aunque ella misma no se
+--    inserte en turno_colaboradoras si no tiene ventas.
 -- ─────────────────────────────────────────────────────────────
 insert into turno_colaboradoras (turno_id, colaboradora_id, comision_pagada_at)
 select distinct
   t.id, m.colaboradora_id, t.fecha + time '17:00'
 from turnos t
-join _imp i on i.fecha = t.fecha
+join _imp i on i.fecha = t.fecha and i.venta is not null and i.venta > 0
 join _map_colab m on m.excel_name = i.colab
 where t.notas like '%[IMPORT_PATCH_ABR2026_10_12]%'
 on conflict do nothing;
