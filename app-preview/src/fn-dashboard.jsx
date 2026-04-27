@@ -4,6 +4,21 @@
 // Filtros de periodo · KPIs · flujo de caja por cuenta · gráficas
 // ──────────────────────────────────────────
 
+// Helper: trae TODAS las filas paginando en bloques de 1000
+// (PostgREST corta a 1000 server-side; .limit() del cliente no lo brinca).
+const _fetchAll = async (buildQuery) => {
+  const PAGE = 1000;
+  let all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+};
+
 // ─── Helpers de fecha ───
 const _pad2 = n => String(n).padStart(2, '0');
 const _ISO = (d) => `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}`;
@@ -80,9 +95,9 @@ const DashboardFn = () => {
       setLoading(true);
       const {desde, hasta} = rango;
       const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ, perfilesQ] = await Promise.all([
-        sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta).limit(50000),
-        sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta).limit(50000),
-        sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta),
+        _fetchAll(() => sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta)),
+        _fetchAll(() => sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta)),
+        _fetchAll(() => sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta)),
         sb.from('cuentas').select('*').order('orden'),
         sb.from('monedas').select('*'),
         sb.from('config_fiscal').select('*').eq('id',1).maybeSingle(),
@@ -122,8 +137,8 @@ const DashboardFn = () => {
     (async () => {
       const {desde, hasta} = rangoPrev;
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta).limit(50000),
-        sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta).limit(50000),
+        _fetchAll(() => sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta)),
+        _fetchAll(() => sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta)),
       ]);
       if (!vivo) return;
       const ventas  = v.data || [];
@@ -148,8 +163,8 @@ const DashboardFn = () => {
       const ini = new Date(now.getFullYear(), now.getMonth() - 5, 1);
       const fin = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)).limit(50000),
-        sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)).limit(50000),
+        _fetchAll(() => sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin))),
+        _fetchAll(() => sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin))),
       ]);
       if (!vivo) return;
       // Agrupar por YYYY-MM
