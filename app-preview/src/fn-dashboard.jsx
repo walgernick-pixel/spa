@@ -210,10 +210,10 @@ const DashboardFn = () => {
       if (!cuentaMap[v.cuenta_id]) return;
       cuentaMap[v.cuenta_id].ingresos += Number(v.precio || 0);
       cuentaMap[v.cuenta_id].n_ventas += 1;
-      // Comisiones solo salen de cuentas efectivo
-      if (cuentaMap[v.cuenta_id].tipo === 'efectivo') {
-        cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
-      }
+      // Comisiones salen de la cuenta donde entró la venta (regla de negocio:
+      // efectivo, banco, terminal — todas). Antes solo se restaban de cuentas
+      // efectivo, lo cual subestimaba el flujo real en cuentas bancarias.
+      cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
     });
     gastos.forEach(g => {
       // Nota: gastos con n_pagos>1 tendrían split. Por simplicidad aquí lo cargamos al cuenta_id

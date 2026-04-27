@@ -399,7 +399,7 @@ const ColabBlockFn = ({c, canales, monedas, cuentas, ventaPagos=[], ocultarMonto
 };
 
 // ───────────── Formulario de venta ─────────────
-const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas, colabsPagadasIds=[], onSave, onCancel}) => {
+const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuentas, monedas, colabsPagadasIds=[], onSave, onCancel}) => {
   const editando = !!venta;
   // Colabs disponibles: todas menos las ya pagadas (si editamos, incluir la actual aunque esté pagada)
   const colabsDisponibles = React.useMemo(()=>{
@@ -558,6 +558,10 @@ const FormVenta = ({venta, turnoId, servicios, canales, colabs, cuentas, monedas
 
     const payload = {
       turno_id: turnoId,
+      // CRÍTICO: fecha de la venta = fecha del turno (no la del momento de captura).
+      // En turnos retroactivos esto evita que la venta quede registrada con la fecha
+      // del día en que se capturó, lo cual la sacaría de los reportes por rango de fecha.
+      ...(turnoFecha ? {fecha: turnoFecha} : {}),
       servicio_id: servicioId,
       colaboradora_id: colabId,
       canal_id: canalId,
