@@ -4,6 +4,21 @@
 // Filtros de periodo · KPIs · flujo de caja por cuenta · gráficas
 // ──────────────────────────────────────────
 
+// Helper: trae TODAS las filas paginando en bloques de 1000
+// (PostgREST corta a 1000 server-side; .limit() del cliente no lo brinca).
+const _fetchAll = async (buildQuery) => {
+  const PAGE = 1000;
+  let all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+};
+
 // ─── Helpers de fecha ───
 const _pad2 = n => String(n).padStart(2, '0');
 const _ISO = (d) => `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}`;
@@ -44,6 +59,21 @@ const rangoPreset = (preset) => {
   }
 };
 
+// Etiqueta corta del período inmediatamente anterior, según el preset elegido
+const labelPeriodoPrev = (preset) => {
+  switch (preset) {
+    case 'hoy':          return 'vs ayer';
+    case 'ayer':         return 'vs antier';
+    case 'semana':       return 'vs semana pasada';
+    case 'mes_actual':   return 'vs mes anterior';
+    case 'mes_anterior': return 'vs mes previo';
+    case 'ult_3m':       return 'vs trimestre anterior';
+    case 'anio':         return 'vs año anterior';
+    case 'custom':       return 'vs período previo';
+    default:             return 'vs período anterior';
+  }
+};
+
 // ─── Componente del dashboard ───
 const DashboardFn = () => {
   const [preset, setPreset]     = React.useState('mes_actual');
@@ -80,9 +110,9 @@ const DashboardFn = () => {
       setLoading(true);
       const {desde, hasta} = rango;
       const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ, perfilesQ] = await Promise.all([
-        sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta),
-        sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta),
-        sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta),
+        _fetchAll(() => sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta)),
+        _fetchAll(() => sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta)),
+        _fetchAll(() => sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta)),
         sb.from('cuentas').select('*').order('orden'),
         sb.from('monedas').select('*'),
         sb.from('config_fiscal').select('*').eq('id',1).maybeSingle(),
@@ -122,8 +152,8 @@ const DashboardFn = () => {
     (async () => {
       const {desde, hasta} = rangoPrev;
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta),
-        sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta),
+        _fetchAll(() => sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta)),
+        _fetchAll(() => sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta)),
       ]);
       if (!vivo) return;
       const ventas  = v.data || [];
@@ -148,8 +178,8 @@ const DashboardFn = () => {
       const ini = new Date(now.getFullYear(), now.getMonth() - 5, 1);
       const fin = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)),
-        sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)),
+        _fetchAll(() => sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin))),
+        _fetchAll(() => sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin))),
       ]);
       if (!vivo) return;
       // Agrupar por YYYY-MM
@@ -210,10 +240,10 @@ const DashboardFn = () => {
       if (!cuentaMap[v.cuenta_id]) return;
       cuentaMap[v.cuenta_id].ingresos += Number(v.precio || 0);
       cuentaMap[v.cuenta_id].n_ventas += 1;
-      // Comisiones solo salen de cuentas efectivo
-      if (cuentaMap[v.cuenta_id].tipo === 'efectivo') {
-        cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
-      }
+      // Comisiones salen de la cuenta donde entró la venta (regla de negocio:
+      // efectivo, banco, terminal — todas). Antes solo se restaban de cuentas
+      // efectivo, lo cual subestimaba el flujo real en cuentas bancarias.
+      cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
     });
     gastos.forEach(g => {
       // Nota: gastos con n_pagos>1 tendrían split. Por simplicidad aquí lo cargamos al cuenta_id
@@ -616,15 +646,30 @@ const DashboardFn = () => {
 
         {!loading && derivado && (
           <>
-            {/* KPIs — 3 cols siempre en desktop para evitar huecos */}
-            <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
-              <KpiCard label="Ventas" value={derivado.totalVentas} color="var(--ink-0)" sub={`${derivado.nServicios} servicios`} delta={deltas?.ventas}/>
-              <KpiCard label="Gastos" value={derivado.totalGastos} color="#b73f5e" sub={`${data.gastos.length} gastos`} delta={deltas?.gastos} deltaInverted/>
-              <KpiCard label="Neto al spa" value={derivado.netoSpa} color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'} sub="ventas − com. − gastos" delta={deltas?.neto} big/>
-              <KpiCard label="Comisiones" value={derivado.totalComis} color="var(--clay)" sub="a terapeutas" delta={deltas?.comis} deltaInverted/>
-              <KpiCard label="Ticket promedio" value={derivado.tickProm} color="var(--ink-0)" sub={`${derivado.nTurnos} turnos`}/>
-              <KpiCard label="Dif. arqueos" value={derivado.difArqueos} color={Math.abs(derivado.difArqueos) < 1 ? 'var(--moss)' : (derivado.difArqueos > 0 ? 'var(--moss)' : '#b73f5e')} sub={Math.abs(derivado.difArqueos) < 1 ? 'cuadra' : (derivado.difArqueos > 0 ? 'sobrante' : 'faltante')} signed/>
-            </div>
+            {/* KPIs — 3 cols. Fila 1: P&L con % de ventas. Fila 2: operación. */}
+            {(() => {
+              const vs       = labelPeriodoPrev(preset);
+              const ventas   = derivado.totalVentas || 0;
+              const pctOf    = (n) => ventas > 0 ? `${(n/ventas*100).toFixed(1)}%` : '—';
+              const dif      = derivado.difArqueos || 0;
+              const arqAbs   = Math.abs(dif);
+              const arqTxt   = arqAbs < 1 ? 'arqueos cuadran' : (dif > 0 ? `arq +$${Math.round(arqAbs).toLocaleString('es-MX')} sobró` : `arq −$${Math.round(arqAbs).toLocaleString('es-MX')} faltó`);
+              const arqColor = arqAbs < 1 ? 'var(--moss)' : (dif > 0 ? 'var(--moss)' : '#b73f5e');
+              return (
+                <div className="cf-kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:12,marginBottom:20}}>
+                  {/* Fila 1: P&L (cómo se reparte cada peso vendido) */}
+                  <KpiCard label="Ventas"      value={ventas}                 color="var(--ink-0)" sub="100% del total"                                          delta={deltas?.ventas}  vsLabel={vs}/>
+                  <KpiCard label="Comisiones"  value={derivado.totalComis}    color="var(--clay)"  sub={`${pctOf(derivado.totalComis)} de ventas`}               delta={deltas?.comis}   deltaInverted vsLabel={vs}/>
+                  <KpiCard label="Gastos"      value={derivado.totalGastos}   color="#b73f5e"      sub={`${pctOf(derivado.totalGastos)} de ventas`}              delta={deltas?.gastos}  deltaInverted vsLabel={vs}/>
+                  {/* Fila 2: operación + neto */}
+                  <KpiCard label="Neto al spa" value={derivado.netoSpa}       color={derivado.netoSpa >= 0 ? 'var(--moss)' : '#b73f5e'}
+                           sub={<>{pctOf(derivado.netoSpa)} de ventas · <span style={{color:arqColor,fontWeight:600}}>{arqTxt}</span></>}
+                           delta={deltas?.neto} big vsLabel={vs}/>
+                  <KpiCard label="Servicios"   value={derivado.nServicios||0} color="var(--ink-0)" sub={`en ${derivado.nTurnos||0} turnos`}                       delta={deltas?.servicios} numberOnly vsLabel={vs}/>
+                  <KpiCard label="Ticket promedio" value={derivado.tickProm}  color="var(--ink-0)" sub="por servicio"/>
+                </div>
+              );
+            })()}
 
             {/* Sección Fiscal (solo si config_fiscal.activo) */}
             {derivado.fiscal && <FiscalSection f={derivado.fiscal}/>}
@@ -1033,8 +1078,12 @@ const ChartTendencia = ({datos}) => {
 };
 
 // ─── KPI card con delta opcional ───
-const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted}) => {
+const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted, numberOnly, vsLabel}) => {
   const fmt = (n) => {
+    if (numberOnly) {
+      const prefix = signed && n < 0 ? '−' : (signed && n > 0 ? '+' : '');
+      return `${prefix}${Math.round(n).toLocaleString('es-MX')}`;
+    }
     const abs = Math.abs(n);
     const prefix = signed && n < 0 ? '−' : (signed && n > 0 ? '+' : '');
     return `${prefix}$${Math.round(abs).toLocaleString('es-MX')}`;
@@ -1047,9 +1096,10 @@ const KpiCard = ({label, value, color, sub, big, signed, delta, deltaInverted}) 
     const color = esBueno ? 'var(--moss)' : '#b73f5e';
     const arrow = positivo ? '▲' : '▼';
     deltaNode = (
-      <span style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10.5,color,fontWeight:600}}>
-        {arrow} {Math.abs(delta).toFixed(1)}%
-      </span>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:1.15}}>
+        <span style={{fontSize:10.5,color,fontWeight:600}}>{arrow} {Math.abs(delta).toFixed(1)}%</span>
+        {vsLabel && <span style={{fontSize:9,color:'var(--ink-3)',fontWeight:500,letterSpacing:.1,textTransform:'none'}}>{vsLabel}</span>}
+      </div>
     );
   }
   return (

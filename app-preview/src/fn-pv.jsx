@@ -393,6 +393,7 @@ const PVTurnoFn = () => {
           <FormVenta
             venta={modal.data}
             turnoId={turnoId}
+            turnoFecha={turno.fecha}
             servicios={servicios}
             canales={canales}
             colabs={colabs}
