@@ -80,8 +80,8 @@ const DashboardFn = () => {
       setLoading(true);
       const {desde, hasta} = rango;
       const [ventasQ, gastosQ, turnosQ, cuentasQ, monedasQ, cfgQ, perfilesQ] = await Promise.all([
-        sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta),
-        sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta),
+        sb.from('v_ventas').select('*').gte('fecha', desde).lte('fecha', hasta).limit(50000),
+        sb.from('v_gastos').select('*').gte('fecha', desde).lte('fecha', hasta).limit(50000),
         sb.from('v_turnos_resumen').select('*').gte('fecha', desde).lte('fecha', hasta),
         sb.from('cuentas').select('*').order('orden'),
         sb.from('monedas').select('*'),
@@ -122,8 +122,8 @@ const DashboardFn = () => {
     (async () => {
       const {desde, hasta} = rangoPrev;
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta),
-        sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta),
+        sb.from('v_ventas').select('precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',desde).lte('fecha',hasta).limit(50000),
+        sb.from('v_gastos').select('monto_mxn').gte('fecha',desde).lte('fecha',hasta).limit(50000),
       ]);
       if (!vivo) return;
       const ventas  = v.data || [];
@@ -148,8 +148,8 @@ const DashboardFn = () => {
       const ini = new Date(now.getFullYear(), now.getMonth() - 5, 1);
       const fin = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const [v,g] = await Promise.all([
-        sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)),
-        sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)),
+        sb.from('v_ventas').select('fecha,precio_mxn,comision_mxn,comision_venta_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)).limit(50000),
+        sb.from('v_gastos').select('fecha,monto_mxn').gte('fecha',_ISO(ini)).lte('fecha',_ISO(fin)).limit(50000),
       ]);
       if (!vivo) return;
       // Agrupar por YYYY-MM
