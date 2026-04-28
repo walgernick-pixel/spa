@@ -32,6 +32,16 @@ const notify = (msg, tone = 'ok') => {
 
 const confirmar = (msg) => window.confirm(msg);
 
+// Helper: fecha local YYYY-MM-DD (evita el bug de toISOString() que da
+// UTC y "adelanta" un día cuando la hora local es de tarde/noche en
+// timezones al oeste de UTC, p.ej. CDMX UTC-6).
+const localDateISO = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+};
+
 // ──────────────────────────────────────────
 // Stub de permisos — se conectará al módulo de auth real después.
 // Por ahora TODOS los permisos devuelven true. Cuando agreguemos
@@ -48,4 +58,4 @@ const confirmar = (msg) => window.confirm(msg);
 // ──────────────────────────────────────────
 const can = (_permiso) => true;
 
-Object.assign(window, { sb, notify, confirmar, can, SUPABASE_URL, SUPABASE_ANONKEY });
+Object.assign(window, { sb, notify, confirmar, can, localDateISO, SUPABASE_URL, SUPABASE_ANONKEY });

@@ -226,7 +226,7 @@ const PVTurnoFn = () => {
   })();
 
   // Retroactivo: creado después de la fecha del turno
-  const retro = turno.creado && turno.fecha && (new Date(turno.creado).toISOString().slice(0,10) > turno.fecha);
+  const retro = turno.creado && turno.fecha && (localDateISO(new Date(turno.creado)) > turno.fecha);
   const creadoFmt = turno.creado ? new Date(turno.creado).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}) : '';
 
   return (

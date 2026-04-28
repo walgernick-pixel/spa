@@ -238,7 +238,7 @@ const TurnosListFn = () => {
     setAbriendo(true);
     const { data: user } = await sb.auth.getUser();
     const ahora = new Date();
-    const hoy   = ahora.toISOString().slice(0,10);
+    const hoy   = localDateISO(ahora);
     const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
     const uid   = user?.user?.id || null;
 
@@ -403,14 +403,14 @@ const TurnosListFn = () => {
 const FormRetroactivo = ({onSave, onCancel}) => {
   // Default: ayer, 09:00
   const ayer = new Date(); ayer.setDate(ayer.getDate()-1);
-  const [fecha, setFecha]       = React.useState(ayer.toISOString().slice(0,10));
+  const [fecha, setFecha]       = React.useState(localDateISO(ayer));
   const [horaInicio, setHora]   = React.useState('09:00');
   const [saving, setSaving]     = React.useState(false);
 
   const fieldStyle = {width:'100%',padding:'9px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'};
   const labelStyle = {display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6};
 
-  const hoyStr = new Date().toISOString().slice(0,10);
+  const hoyStr = localDateISO();
   const fechaEnFuturo = fecha > hoyStr;
   const fechaEsHoy    = fecha === hoyStr;
 
@@ -480,7 +480,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
   const horaFin = t.hora_fin || (t.estado === 'abierto' ? 'en curso' : '—');
 
   // Retroactivo: creado después de la fecha del turno
-  const retro = t.creado && t.fecha && (new Date(t.creado).toISOString().slice(0,10) > t.fecha);
+  const retro = t.creado && t.fecha && (localDateISO(new Date(t.creado)) > t.fecha);
 
   // Row gradient when abierto (destaca visualmente)
   const rowBg = t.estado==='abierto'
