@@ -27,16 +27,19 @@ const PVTurnoFn = () => {
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
     setLoading(true);
-    const [t, v, s, ca, co, cu, mo, tc, pf] = await Promise.all([
+    // Catálogos: usar consultarCatalogo (cae a IndexedDB si no hay net).
+    // El turno, ventas y turno_colaboradoras siguen yendo directo (datos
+    // específicos del turno; offline para Fase 3).
+    const [t, v, tc, s, ca, co, cu, mo, pf] = await Promise.all([
       sb.from('turnos').select('*').eq('id', turnoId).single(),
       sb.from('v_ventas').select('*').eq('turno_id', turnoId).order('creado',{ascending:false}),
-      sb.from('servicios').select('*').eq('activo',true).order('orden').order('label'),
-      sb.from('canales_venta').select('*').eq('activo',true).order('orden'),
-      sb.from('colaboradoras').select('*').eq('activo',true).order('nombre'),
-      sb.from('cuentas').select('*').eq('activo',true).order('orden'),
-      sb.from('monedas').select('*'),
       sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
-      sb.from('perfiles').select('id,nombre_display,username,activo').eq('activo', true).order('nombre_display'),
+      consultarCatalogo('servicios'),
+      consultarCatalogo('canales_venta'),
+      consultarCatalogo('colaboradoras'),
+      consultarCatalogo('cuentas'),
+      consultarCatalogo('monedas'),
+      consultarCatalogo('perfiles'),
     ]);
     if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
     setTurno(t.data);
