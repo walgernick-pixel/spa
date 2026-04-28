@@ -146,19 +146,49 @@ const consultarCatalogo = async (tabla) => {
   return {data: cached, fromCache: true, error: cached.length === 0 ? new Error('Sin datos en cache') : null};
 };
 
-// ── 4) Banner de estado de conexión
+// ── 4) Banner de estado + badge de capturas pendientes
 const _injectBanner = () => {
   if (document.getElementById('offline-banner')) return;
   const el = document.createElement('div');
   el.id = 'offline-banner';
   el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;padding:8px 14px;background:#b07228;color:#fff;font:600 12px/1.4 Geist,sans-serif;text-align:center;letter-spacing:.3px;display:none;box-shadow:0 2px 8px rgba(0,0,0,.15);';
-  el.textContent = '⚡ Sin conexión — los catálogos están cacheados; las nuevas capturas se encolarán cuando regrese internet.';
+  el.innerHTML = '<span id="offline-banner-text">⚡ Sin conexión — capturas se encolarán</span>';
   document.body.appendChild(el);
+
+  // Badge separado: visible aunque haya internet, si hay cola pendiente
+  const badge = document.createElement('div');
+  badge.id = 'offline-badge';
+  badge.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9997;padding:6px 11px;background:#3a5d3a;color:#faf7f1;font:600 11px/1.3 Geist,sans-serif;letter-spacing:.3px;border-radius:999px;display:none;box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:default;';
+  badge.title = 'Operaciones encoladas que se sincronizarán al volver internet';
+  document.body.appendChild(badge);
 };
 
-const _updateBanner = () => {
+const _updateBanner = async () => {
   const el = document.getElementById('offline-banner');
-  if (el) el.style.display = navigator.onLine ? 'none' : 'block';
+  const txt = document.getElementById('offline-banner-text');
+  const badge = document.getElementById('offline-badge');
+  const online = navigator.onLine;
+  let pending = 0;
+  try { pending = await getPendingCount(); } catch (_) {}
+
+  // Banner offline
+  if (el) el.style.display = online ? 'none' : 'block';
+  if (!online && txt) {
+    txt.textContent = pending > 0
+      ? `⚡ Sin conexión — ${pending} captura${pending===1?'':'s'} pendiente${pending===1?'':'s'} de sincronizar`
+      : '⚡ Sin conexión — capturas se encolarán';
+  }
+
+  // Badge (online con pendientes pendientes = sincronizando)
+  if (badge) {
+    if (online && pending > 0) {
+      badge.style.display = 'block';
+      badge.textContent = `⟳ Sincronizando ${pending}`;
+      badge.style.background = '#3a5d3a';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
 };
 
 // Cuando el DOM esté listo, montar banner + listeners
@@ -248,6 +278,15 @@ const findQueuedById = async (table, id) => {
   return m ? m.payload : null;
 };
 
+// Buscar TODOS los registros encolados de una tabla que cumplan un predicate.
+// Útil para mostrar ventas/pagos encolados que aún no están en Supabase.
+const findQueuedAll = async (table, predicate) => {
+  const all = await _queueAll();
+  return all
+    .filter(x => x.op === 'insert' && x.table === table && x.payload && predicate(x.payload))
+    .map(x => x.payload);
+};
+
 // API pública: cuántas operaciones pendientes
 const getPendingCount = async () => {
   const all = await _queueAll();
@@ -282,7 +321,18 @@ const _syncOne = async (item) => {
     } else {
       throw new Error('Op desconocida: ' + item.op);
     }
-    if (res.error) throw res.error;
+    if (res.error) {
+      // 23505 = duplicate key (Postgres). Consideramos éxito porque el
+      // registro ya existe — útil para upserts encolados (p.ej.
+      // turno_colaboradoras tiene unique constraint y al insertar 2x
+      // el mismo colab en el turno tenemos que tolerarlo).
+      if (res.error.code === '23505') {
+        await _queueDelete(item.id);
+        console.log('[offline] sync OK (ya existía, 23505):', item.op, item.table);
+        return true;
+      }
+      throw res.error;
+    }
     await _queueDelete(item.id);
     console.log('[offline] sync OK:', item.op, item.table, item.payload?.id || item.filter);
     return true;
@@ -332,7 +382,10 @@ const drainQueue = async () => {
 // Listeners de cambios en la cola (para badges/UI)
 const _queueListeners = new Set();
 const onQueueChange = (cb) => { _queueListeners.add(cb); return () => _queueListeners.delete(cb); };
-const _notifyQueueChange = () => { _queueListeners.forEach(cb => { try { cb(); } catch(e) { console.error(e); } }); };
+const _notifyQueueChange = () => {
+  _queueListeners.forEach(cb => { try { cb(); } catch(e) { console.error(e); } });
+  _updateBanner();  // refrescar badge/banner cuando cambia la cola
+};
 
 // Auto-drain cuando se recupere conexión (además del que ya hace refrescarCatalogos)
 window.addEventListener('online', () => {
@@ -400,5 +453,5 @@ Object.assign(window, {
   leerCatalogo, consultarCatalogo, refrescarCatalogos,
   // Queue + sync
   enqueue, drainQueue, getPendingCount, getPending, getFailed,
-  findQueuedById, onQueueChange, sbInsert, sbUpdate, genUUID,
+  findQueuedById, findQueuedAll, onQueueChange, sbInsert, sbUpdate, genUUID,
 });

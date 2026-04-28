@@ -579,19 +579,32 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
       comision_venta_pct: vendedoraSel ? cvPctNum : null,
       comision_venta_monto: vendedoraSel ? comisionVenta : null,
     };
-    let error, ventaId;
+    let error, ventaId, fromQueue = false;
     if (editando) {
+      // Edición: solo permitida online (refactor de venta_pagos delete+
+      // insert es complejo offline). Si no hay net, bloquea.
+      if (!navigator.onLine) {
+        setSaving(false);
+        return notify('Editar venta requiere conexión. Borra y vuelve a capturar offline si es urgente.', 'warn');
+      }
       ({error} = await sb.from('ventas').update(payload).eq('id', venta.id));
       ventaId = venta.id;
     } else {
-      const res = await sb.from('ventas').insert(payload).select('id').single();
-      error = res.error; ventaId = res.data?.id;
+      // Nueva venta: usar sbInsert (online directo, offline encola con UUID cliente)
+      ventaId = window.genUUID();
+      const ventaPayload = {...payload, id: ventaId};
+      const res = await window.sbInsert('ventas', ventaPayload);
+      error = res.error; fromQueue = !!res.fromQueue;
     }
     if (error) { setSaving(false); return notify('Error: '+error.message,'err'); }
 
-    // Guardar venta_pagos: borrar existentes y reinsertar (más simple y confiable)
+    // Guardar venta_pagos
     if (ventaId) {
-      await sb.from('venta_pagos').delete().eq('venta_id', ventaId);
+      // Si online + edit: borrar existentes y reinsertar (camino simple).
+      // Offline o nueva venta: solo insert (no hay existentes).
+      if (editando && navigator.onLine) {
+        await sb.from('venta_pagos').delete().eq('venta_id', ventaId);
+      }
       const pagoRows = [];
       if (splitActivo) {
         splitLines.forEach((l, i) => {
@@ -605,19 +618,32 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
         pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'servicio', monto: precioBaseNum, descuento: descuentoBaseNum, orden: 0});
         if (propinaNum > 0) pagoRows.push({venta_id: ventaId, cuenta_id: cuentaId, tipo: 'propina', monto: propinaNum, descuento: 0, orden: 0});
       }
-      if (pagoRows.length > 0) {
-        const {error: pErr} = await sb.from('venta_pagos').insert(pagoRows);
-        if (pErr) { setSaving(false); return notify('Error guardando pagos: '+pErr.message,'err'); }
+      // Insertar uno por uno con sbInsert (cada uno con UUID propio).
+      for (const row of pagoRows) {
+        const r = await window.sbInsert('venta_pagos', row);
+        if (r.error) { setSaving(false); return notify('Error guardando pagos: '+r.error.message,'err'); }
       }
     }
 
-    // Upsert turno_colaboradoras (asegurar que ambas — ejecutor y vendedora — están en el turno)
+    // Asegurar que las personas (ejecutor + vendedora) están en el turno.
+    // Online: upsert con onConflict; offline: encolar inserts (la sync
+    // tolera duplicate-key con código 23505 — ver offline.jsx).
     const tcRows = [{turno_id: turnoId, colaboradora_id: colabId}];
     if (vendedoraSel) tcRows.push({turno_id: turnoId, colaboradora_id: vendedoraSel.id});
-    await sb.from('turno_colaboradoras').upsert(tcRows, {onConflict:'turno_id,colaboradora_id', ignoreDuplicates:true});
+    if (navigator.onLine && window.sb) {
+      await sb.from('turno_colaboradoras').upsert(tcRows, {onConflict:'turno_id,colaboradora_id', ignoreDuplicates:true});
+    } else {
+      for (const row of tcRows) {
+        await window.enqueue({op:'insert', table:'turno_colaboradoras', payload: row});
+      }
+    }
 
     setSaving(false);
-    notify(editando?'Servicio actualizado':'Servicio registrado');
+    if (fromQueue) {
+      notify('Servicio capturado (offline · se sincroniza al volver)', 'warn');
+    } else {
+      notify(editando?'Servicio actualizado':'Servicio registrado');
+    }
     onSave();
   };
 

@@ -52,21 +52,55 @@ const PVTurnoFn = () => {
       }
     }
     setTurno(turnoData);
-    setVentas(v.data || []);
 
-    // Cargar venta_pagos (splits) en paralelo
-    const ventaIds = (v.data || []).map(x => x.id);
+    // Mezclar ventas reales (Supabase) con ventas encoladas (offline).
+    // Las encoladas no tienen los joins de v_ventas, así que las
+    // enriquecemos cliente-side desde el cache de catálogos.
+    const ventasReales = v.data || [];
+    const queuedVentas = await window.findQueuedAll('ventas', vv => vv.turno_id === turnoId);
+    const sList = s.data || [], coList = co.data || [], caList = ca.data || [], cuList = cu.data || [];
+    const enrichedQueued = queuedVentas.map(qv => {
+      const ser = sList.find(x => x.id === qv.servicio_id);
+      const col = coList.find(x => x.id === qv.colaboradora_id);
+      const can = caList.find(x => x.id === qv.canal_id);
+      const cue = cuList.find(x => x.id === qv.cuenta_id);
+      const ven = qv.vendedora_id ? coList.find(x => x.id === qv.vendedora_id) : null;
+      return {
+        ...qv,
+        servicio:            ser?.label,
+        colaboradora_nombre: col?.nombre,
+        colaboradora_alias:  col?.alias,
+        canal:               can?.label,
+        canal_tone:          can?.tone,
+        cuenta:              cue?.label,
+        cuenta_tipo:         cue?.tipo,
+        vendedora_nombre:    ven?.nombre,
+        vendedora_alias:     ven?.alias,
+        precio_mxn:          Number(qv.precio || 0) * Number(qv.tc_momento || 1),
+        comision_mxn:        Number(qv.comision_monto || 0) * Number(qv.tc_momento || 1),
+        comision_venta_mxn:  Number(qv.comision_venta_monto || 0) * Number(qv.tc_momento || 1),
+        descuento_mxn:       Number(qv.descuento || 0) * Number(qv.tc_momento || 1),
+        propina_mxn:         Number(qv.propina || 0) * Number(qv.tc_momento || 1),
+        _pending:            true, // bandera para que la UI marque "offline pendiente"
+      };
+    });
+    setVentas([...ventasReales, ...enrichedQueued]);
+
+    // Cargar venta_pagos (splits) — reales + encolados
+    const ventaIds = ventasReales.map(x => x.id);
+    let pagosReales = [];
     if (ventaIds.length > 0) {
       const {data: pagos} = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
-      setVentaPagos(pagos || []);
-    } else {
-      setVentaPagos([]);
+      pagosReales = pagos || [];
     }
+    const queuedVentaIds = queuedVentas.map(x => x.id);
+    const queuedPagos = await window.findQueuedAll('venta_pagos', vp => queuedVentaIds.includes(vp.venta_id));
+    setVentaPagos([...pagosReales, ...queuedPagos]);
 
-    setServicios(s.data || []);
-    setCanales(ca.data || []);
-    setColabs(co.data || []);
-    setCuentas(cu.data || []);
+    setServicios(sList);
+    setCanales(caList);
+    setColabs(coList);
+    setCuentas(cuList);
     const monMap = {}; (mo.data||[]).forEach(m => monMap[m.codigo] = m);
     setMonedas(monMap);
     setTurnoCol(tc.data || []);
