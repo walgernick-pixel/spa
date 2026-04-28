@@ -11,23 +11,32 @@
 // ──────────────────────────────────────────
 
 // ── 1) Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(reg => {
-      console.log('[offline] SW registrado:', reg.scope);
-      // Cuando hay un SW nuevo esperando, lo activamos al instante
-      if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
-      reg.addEventListener('updatefound', () => {
-        const nw = reg.installing;
-        nw && nw.addEventListener('statechange', () => {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            // Hay update lista — actualiza al recargar
-            nw.postMessage('SKIP_WAITING');
-          }
-        });
+// Babel compila este archivo con delay, así que el evento 'load' del
+// window posiblemente ya pasó. Verificamos readyState y registramos
+// inmediatamente si el documento ya está cargado.
+const _registerSW = () => {
+  if (!('serviceWorker' in navigator)) {
+    console.warn('[offline] navigator.serviceWorker no disponible');
+    return;
+  }
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    console.log('[offline] SW registrado:', reg.scope);
+    if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw && nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          nw.postMessage('SKIP_WAITING');
+        }
       });
-    }).catch(err => console.warn('[offline] SW registro falló:', err));
-  });
+    });
+  }).catch(err => console.error('[offline] SW registro falló:', err));
+};
+
+if (document.readyState === 'complete') {
+  _registerSW();
+} else {
+  window.addEventListener('load', _registerSW);
 }
 
 // ── 2) IndexedDB wrapper minimalista
