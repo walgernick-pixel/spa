@@ -40,9 +40,11 @@ if (document.readyState === 'complete') {
 }
 
 // ── 2) IndexedDB wrapper minimalista
+//   stores:
+//     catalog → {key:tabla, value:rows[], ts}
+//     queue   → {id:uuid, ts, op, table, payload, filter, status, error, retries}
 const DB_NAME = 'cashflow_offline';
-const DB_VERSION = 1;
-const STORES = ['catalog']; // {key, value, ts}
+const DB_VERSION = 2;
 
 const _openDB = () => new Promise((resolve, reject) => {
   const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -50,7 +52,14 @@ const _openDB = () => new Promise((resolve, reject) => {
   req.onsuccess = () => resolve(req.result);
   req.onupgradeneeded = (e) => {
     const db = e.target.result;
-    STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, {keyPath:'key'}); });
+    if (!db.objectStoreNames.contains('catalog')) {
+      db.createObjectStore('catalog', {keyPath:'key'});
+    }
+    if (!db.objectStoreNames.contains('queue')) {
+      const q = db.createObjectStore('queue', {keyPath:'id'});
+      q.createIndex('ts', 'ts');           // ordenar FIFO
+      q.createIndex('status', 'status');   // filtrar por estado
+    }
   };
 });
 
@@ -165,5 +174,231 @@ window.addEventListener('offline', () => { _updateBanner(); window.notify && win
 // Pequeño delay para no pelearse con el primer render.
 setTimeout(() => { refrescarCatalogos(); }, 1500);
 
-// Exponer en window
-Object.assign(window, { leerCatalogo, consultarCatalogo, refrescarCatalogos });
+// ──────────────────────────────────────────
+// Fase 3 — Cola de escritura + sync engine
+// ──────────────────────────────────────────
+
+// UUID v4 — usa crypto.randomUUID si existe (todos los browsers modernos),
+// fallback a generación manual.
+const genUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+};
+
+// Helpers genéricos sobre el store 'queue'
+const _queuePut = async (item) => {
+  const db = await _openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').put(item);
+    tx.oncomplete = () => res(item);
+    tx.onerror = () => rej(tx.error);
+  });
+};
+
+const _queueAll = async () => {
+  const db = await _openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readonly');
+    const r = tx.objectStore('queue').index('ts').getAll();
+    r.onsuccess = () => res(r.result || []);
+    r.onerror = () => rej(r.error);
+  });
+};
+
+const _queueDelete = async (id) => {
+  const db = await _openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').delete(id);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+};
+
+// API pública: encolar una operación
+//   op:      'insert' | 'update' | 'delete'
+//   table:   nombre de la tabla supabase
+//   payload: data para insert/update (objeto)
+//   filter:  para update/delete, ej {id: 'uuid'} o {col: val}
+const enqueue = async ({op, table, payload = null, filter = null}) => {
+  const item = {
+    id: genUUID(),
+    ts: new Date().toISOString(),
+    op, table, payload, filter,
+    status: 'pending',
+    error: null,
+    retries: 0,
+  };
+  await _queuePut(item);
+  console.log('[offline] encolado:', op, table, payload?.id || filter);
+  _notifyQueueChange();
+  return item;
+};
+
+// Buscar un registro encolado por (tabla, id). Útil para que el PV
+// pueda mostrar un turno recién abierto offline aunque aún no esté
+// en Supabase. Solo busca en operaciones 'insert'.
+const findQueuedById = async (table, id) => {
+  const all = await _queueAll();
+  const m = all.find(x => x.op === 'insert' && x.table === table && x.payload && x.payload.id === id);
+  return m ? m.payload : null;
+};
+
+// API pública: cuántas operaciones pendientes
+const getPendingCount = async () => {
+  const all = await _queueAll();
+  return all.filter(x => x.status !== 'failed').length;
+};
+
+const getPending = async () => {
+  return (await _queueAll()).filter(x => x.status !== 'failed');
+};
+
+const getFailed = async () => {
+  return (await _queueAll()).filter(x => x.status === 'failed');
+};
+
+// Sincronizar UNA operación. Retorna true si OK, false si falló.
+const _syncOne = async (item) => {
+  if (!window.sb) return false;
+  try {
+    item.status = 'syncing';
+    await _queuePut(item);
+    let res;
+    if (item.op === 'insert') {
+      res = await window.sb.from(item.table).insert(item.payload);
+    } else if (item.op === 'update') {
+      let q = window.sb.from(item.table).update(item.payload);
+      Object.entries(item.filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
+      res = await q;
+    } else if (item.op === 'delete') {
+      let q = window.sb.from(item.table).delete();
+      Object.entries(item.filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
+      res = await q;
+    } else {
+      throw new Error('Op desconocida: ' + item.op);
+    }
+    if (res.error) throw res.error;
+    await _queueDelete(item.id);
+    console.log('[offline] sync OK:', item.op, item.table, item.payload?.id || item.filter);
+    return true;
+  } catch (e) {
+    item.retries = (item.retries || 0) + 1;
+    item.error = String(e.message || e);
+    item.status = item.retries >= 5 ? 'failed' : 'pending';
+    await _queuePut(item);
+    console.warn('[offline] sync falló:', item.op, item.table, '·', item.error, '(retry', item.retries+')');
+    return false;
+  }
+};
+
+// Drenar la cola en orden FIFO. Si una falla y aún no llega a 5 retries,
+// se queda como 'pending' y la siguiente intenta. Si llega a 'failed',
+// se SALTA y seguimos con la próxima (para no bloquear todo por una mala).
+let _draining = false;
+const drainQueue = async () => {
+  if (_draining) return;
+  if (!navigator.onLine) return;
+  _draining = true;
+  try {
+    const pending = await getPending();
+    if (pending.length === 0) return;
+    console.log('[offline] drenando cola:', pending.length, 'operaciones');
+    for (const item of pending) {
+      // Re-leer por si cambió de estado en otro tick
+      const fresh = (await _queueAll()).find(x => x.id === item.id);
+      if (!fresh || fresh.status === 'failed') continue;
+      await _syncOne(fresh);
+    }
+    _notifyQueueChange();
+    const after = await getPending();
+    if (after.length === 0) {
+      window.notify && window.notify('Sincronizado', 'ok');
+    } else {
+      const failed = await getFailed();
+      if (failed.length > 0) {
+        window.notify && window.notify(`${failed.length} operación(es) con error — revisa la cola`, 'err');
+      }
+    }
+  } finally {
+    _draining = false;
+  }
+};
+
+// Listeners de cambios en la cola (para badges/UI)
+const _queueListeners = new Set();
+const onQueueChange = (cb) => { _queueListeners.add(cb); return () => _queueListeners.delete(cb); };
+const _notifyQueueChange = () => { _queueListeners.forEach(cb => { try { cb(); } catch(e) { console.error(e); } }); };
+
+// Auto-drain cuando se recupere conexión (además del que ya hace refrescarCatalogos)
+window.addEventListener('online', () => {
+  setTimeout(drainQueue, 800);
+});
+
+// Polling defensivo: cada 30s si hay net y cola pendiente, intenta drenar
+setInterval(() => {
+  if (navigator.onLine) {
+    getPendingCount().then(n => { if (n > 0) drainQueue(); });
+  }
+}, 30000);
+
+// Helper "smart insert": si hay net, hace insert directo. Si no, encola.
+// Siempre asegura que payload.id exista (UUID cliente) para que las FK
+// referenciadas por inserts posteriores en la misma cola sean estables.
+const sbInsert = async (table, payload, options = {}) => {
+  if (!payload.id) payload.id = genUUID();
+  if (!navigator.onLine || !window.sb) {
+    await enqueue({op: 'insert', table, payload});
+    return { data: payload, error: null, fromQueue: true };
+  }
+  try {
+    let q = window.sb.from(table).insert(payload);
+    if (options.select) q = q.select(options.select);
+    if (options.single) q = q.single();
+    const res = await q;
+    if (res.error) {
+      // Si el error es de red, encolar de respaldo
+      if (/network|fetch|failed to fetch/i.test(String(res.error.message || ''))) {
+        await enqueue({op: 'insert', table, payload});
+        return { data: payload, error: null, fromQueue: true };
+      }
+      return res;
+    }
+    return res;
+  } catch (e) {
+    // Falla de red → encolar
+    await enqueue({op: 'insert', table, payload});
+    return { data: payload, error: null, fromQueue: true };
+  }
+};
+
+// Update offline-aware
+const sbUpdate = async (table, payload, filter) => {
+  if (!navigator.onLine || !window.sb) {
+    await enqueue({op: 'update', table, payload, filter});
+    return { data: null, error: null, fromQueue: true };
+  }
+  try {
+    let q = window.sb.from(table).update(payload);
+    Object.entries(filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
+    return await q;
+  } catch (e) {
+    await enqueue({op: 'update', table, payload, filter});
+    return { data: null, error: null, fromQueue: true };
+  }
+};
+
+// Reintenta la cola al cargar, una vez los catálogos estén refrescados
+setTimeout(() => { drainQueue(); }, 3000);
+
+// Exponer todo en window
+Object.assign(window, {
+  leerCatalogo, consultarCatalogo, refrescarCatalogos,
+  // Queue + sync
+  enqueue, drainQueue, getPendingCount, getPending, getFailed,
+  findQueuedById, onQueueChange, sbInsert, sbUpdate, genUUID,
+});

@@ -41,8 +41,17 @@ const PVTurnoFn = () => {
       consultarCatalogo('monedas'),
       consultarCatalogo('perfiles'),
     ]);
-    if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
-    setTurno(t.data);
+    let turnoData = t.data;
+    if (t.error || !turnoData) {
+      // Fallback: el turno puede estar solo en la cola offline (recién
+      // abierto sin internet). Lo buscamos ahí para no crashear el PV.
+      turnoData = await window.findQueuedById('turnos', turnoId);
+      if (!turnoData) {
+        notify('No se encontró el turno: '+(t.error?.message || 'no existe'), 'err');
+        setLoading(false); return;
+      }
+    }
+    setTurno(turnoData);
     setVentas(v.data || []);
 
     // Cargar venta_pagos (splits) en paralelo
