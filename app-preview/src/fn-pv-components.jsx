@@ -530,6 +530,16 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
   const labelStyle = {display:'block',fontSize:11,fontWeight:600,letterSpacing:.4,textTransform:'uppercase',color:'var(--ink-3)',marginBottom:6};
 
   const guardar = async () => {
+    try {
+      await _guardarInner();
+    } catch (e) {
+      console.error('[guardar] excepción no controlada', e);
+      setSaving(false);
+      notify('Error inesperado: ' + (e?.message || e), 'err');
+    }
+  };
+
+  const _guardarInner = async () => {
     if (!servicioId)  return notify('Selecciona el servicio','err');
     if (!colabId)     return notify('Selecciona a quien ejecuta','err');
     if (!canalId)     return notify('Selecciona el canal','err');

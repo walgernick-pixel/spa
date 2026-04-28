@@ -399,6 +399,17 @@ setInterval(() => {
   }
 }, 30000);
 
+// Detecta cualquier sabor de error de red para hacer fallback a la cola.
+// Cubre: TypeError NetworkError, "Failed to fetch", "fetch error",
+// supabase wrapper errors, FetchError, AbortError, etc.
+const _isNetworkError = (e) => {
+  if (!e) return false;
+  const m = String(e.message || e.toString() || '');
+  if (/network|fetch|failed to fetch|abort|offline|err_internet|connection|cors/i.test(m)) return true;
+  if (e.name === 'TypeError' && /fetch/i.test(m)) return true;
+  return false;
+};
+
 // Helper "smart insert": si hay net, hace insert directo. Si no, encola.
 // Siempre asegura que payload.id exista (UUID cliente) para que las FK
 // referenciadas por inserts posteriores en la misma cola sean estables.
@@ -414,8 +425,7 @@ const sbInsert = async (table, payload, options = {}) => {
     if (options.single) q = q.single();
     const res = await q;
     if (res.error) {
-      // Si el error es de red, encolar de respaldo
-      if (/network|fetch|failed to fetch/i.test(String(res.error.message || ''))) {
+      if (_isNetworkError(res.error)) {
         await enqueue({op: 'insert', table, payload});
         return { data: payload, error: null, fromQueue: true };
       }
@@ -423,9 +433,12 @@ const sbInsert = async (table, payload, options = {}) => {
     }
     return res;
   } catch (e) {
-    // Falla de red → encolar
-    await enqueue({op: 'insert', table, payload});
-    return { data: payload, error: null, fromQueue: true };
+    if (_isNetworkError(e)) {
+      await enqueue({op: 'insert', table, payload});
+      return { data: payload, error: null, fromQueue: true };
+    }
+    // Otros errores (validation, sintaxis...) los devolvemos para que el caller decida
+    return { data: null, error: e, fromQueue: false };
   }
 };
 
@@ -438,10 +451,18 @@ const sbUpdate = async (table, payload, filter) => {
   try {
     let q = window.sb.from(table).update(payload);
     Object.entries(filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
-    return await q;
+    const res = await q;
+    if (res.error && _isNetworkError(res.error)) {
+      await enqueue({op: 'update', table, payload, filter});
+      return { data: null, error: null, fromQueue: true };
+    }
+    return res;
   } catch (e) {
-    await enqueue({op: 'update', table, payload, filter});
-    return { data: null, error: null, fromQueue: true };
+    if (_isNetworkError(e)) {
+      await enqueue({op: 'update', table, payload, filter});
+      return { data: null, error: null, fromQueue: true };
+    }
+    return { data: null, error: e, fromQueue: false };
   }
 };
 
