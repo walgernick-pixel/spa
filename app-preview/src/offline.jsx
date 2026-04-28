@@ -77,29 +77,37 @@ const idbGet = async (store, key) => {
 // Tablas + columnas que valen cachear para que la app funcione offline.
 // (Solo lectura; los inserts siguen yendo a Supabase con la cola que
 //  vendrá en Fase 3.)
+// Usamos select('*') para ser robustos ante cambios de schema; los
+// catálogos son pequeños (<100 filas típicamente).
 const CATALOGOS = [
-  {tabla: 'colaboradoras',  query: 'id,nombre,alias,activo,orden,comision_pct',                    where: ['activo', true],  order: 'orden'},
-  {tabla: 'servicios',      query: 'id,codigo,label,duracion_min,precio_base,activo,orden',         where: ['activo', true],  order: 'orden'},
-  {tabla: 'canales_venta',  query: 'id,label,comision_default,permite_comision_venta,comision_venta_pct,tone,activo,orden', where: ['activo', true], order: 'orden'},
-  {tabla: 'cuentas',        query: 'id,label,tipo,moneda,es_fiscal,activo,orden',                   where: ['activo', true],  order: 'orden'},
-  {tabla: 'monedas',        query: 'codigo,label,simbolo,tc_a_mxn,es_base'},
-  {tabla: 'perfiles',       query: 'id,nombre_display,username,rol,activo'},
+  {tabla: 'colaboradoras',  where: ['activo', true], order: 'nombre'},
+  {tabla: 'servicios',      where: ['activo', true], order: 'orden'},
+  {tabla: 'canales_venta',  where: ['activo', true], order: 'orden'},
+  {tabla: 'cuentas',        where: ['activo', true], order: 'orden'},
+  {tabla: 'monedas'},
+  {tabla: 'perfiles',       where: ['activo', true], order: 'nombre_display'},
 ];
+
+const _runQuery = (c) => {
+  let q = window.sb.from(c.tabla).select('*');
+  if (c.where) q = q.eq(c.where[0], c.where[1]);
+  if (c.order) q = q.order(c.order);
+  return q;
+};
 
 const refrescarCatalogos = async () => {
   if (!window.sb) return;
   if (!navigator.onLine) return;
   for (const c of CATALOGOS) {
     try {
-      let q = window.sb.from(c.tabla).select(c.query);
-      if (c.where) q = q.eq(c.where[0], c.where[1]);
-      if (c.order) q = q.order(c.order);
-      const {data, error} = await q;
+      const {data, error} = await _runQuery(c);
       if (!error && data) {
         await idbPut('catalog', c.tabla, data);
+      } else if (error) {
+        console.warn('[offline] refresh catalog falló:', c.tabla, error.message);
       }
     } catch (e) {
-      console.warn('[offline] refresh catalog falló:', c.tabla, e);
+      console.warn('[offline] refresh catalog excepción:', c.tabla, e);
     }
   }
   console.log('[offline] catálogos cacheados');
@@ -117,10 +125,7 @@ const consultarCatalogo = async (tabla) => {
     const c = CATALOGOS.find(x => x.tabla === tabla);
     if (c) {
       try {
-        let q = window.sb.from(c.tabla).select(c.query);
-        if (c.where) q = q.eq(c.where[0], c.where[1]);
-        if (c.order) q = q.order(c.order);
-        const {data, error} = await q;
+        const {data, error} = await _runQuery(c);
         if (!error && data) {
           idbPut('catalog', tabla, data); // refrescar background
           return {data, fromCache: false, error: null};
