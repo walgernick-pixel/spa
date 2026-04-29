@@ -236,11 +236,12 @@ const TurnosListFn = () => {
     }
 
     setAbriendo(true);
-    const { data: user } = await sb.auth.getUser();
+    const { data: user } = navigator.onLine ? await sb.auth.getUser() : {data:{user:null}};
     const ahora = new Date();
     const hoy   = localDateISO(ahora);
     const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
-    const uid   = user?.user?.id || null;
+    // Si offline, usar el perfil cacheado de window.__auth (mig fn-auth)
+    const uid   = user?.user?.id || window.__auth?.perfil?.id || null;
 
     const nuevo = {
       fecha: hoy,
@@ -250,11 +251,13 @@ const TurnosListFn = () => {
       abierto_por: uid,
     };
 
-    const { data, error } = await sb.from('turnos').insert(nuevo).select().single();
+    // sbInsert genera UUID cliente si falta y maneja online/offline.
+    const { data, error, fromQueue } = await window.sbInsert('turnos', nuevo, {select:'*', single:true});
     setAbriendo(false);
     if (error) { notify('No se pudo abrir el turno: '+error.message, 'err'); return; }
-    notify('Turno abierto ✓');
-    // Ir al PV del turno recién creado
+    if (fromQueue) notify('Turno abierto (offline · se sincroniza al volver)', 'warn');
+    else           notify('Turno abierto ✓');
+    // Ir al PV del turno recién creado (data.id existe en ambos casos)
     navigate('turnos/pv/' + data.id);
   };
 

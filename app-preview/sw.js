@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.0.1';  // bump → fuerza re-cache de offline.jsx
+const VERSION    = 'v1.1.2';  // Fase 3: defensa adicional contra network errors
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;
