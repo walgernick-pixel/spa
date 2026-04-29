@@ -10,10 +10,45 @@
 // Fase 3 (cola de escritura + sync) en próximo PR.
 // ──────────────────────────────────────────
 
-// ── 1) Service Worker
-// Babel compila este archivo con delay, así que el evento 'load' del
-// window posiblemente ya pasó. Verificamos readyState y registramos
-// inmediatamente si el documento ya está cargado.
+// ── 1) Service Worker + banner "Nueva versión disponible"
+//
+// Cuando el SW detecta una versión nueva, NO la activa automáticamente.
+// Mostramos un banner "✨ Nueva versión disponible · Actualizar" abajo
+// del centro de la pantalla. Click → SKIP_WAITING + reload. Así la
+// encargada actualiza cuando le convenga (no en medio de capturar).
+//
+// En primer install (sin controller previo), no hay banner — la app
+// arranca con la versión nueva directamente.
+
+let _newSW = null; // referencia al SW esperando activarse
+
+const _injectUpdateBanner = () => {
+  if (document.getElementById('update-banner')) return;
+  const el = document.createElement('div');
+  el.id = 'update-banner';
+  el.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 18px;background:#3a5d3a;color:#faf7f1;font:600 13px/1.4 Geist,sans-serif;border-radius:999px;display:none;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.25);align-items:center;gap:12px;letter-spacing:.2px;';
+  el.innerHTML = '<span>✨ Nueva versión disponible</span><span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;">Actualizar</span>';
+  el.onclick = async () => {
+    if (!_newSW) return;
+    el.style.cursor = 'wait';
+    el.firstChild.textContent = 'Actualizando…';
+    let reloaded = false;
+    const doReload = () => { if (reloaded) return; reloaded = true; window.location.reload(); };
+    navigator.serviceWorker.addEventListener('controllerchange', doReload);
+    try { _newSW.postMessage('SKIP_WAITING'); } catch (_) {}
+    // Fallback si controllerchange no dispara en 2s
+    setTimeout(doReload, 2000);
+  };
+  document.body.appendChild(el);
+};
+
+const _showUpdateBanner = (sw) => {
+  _newSW = sw;
+  _injectUpdateBanner();
+  const el = document.getElementById('update-banner');
+  if (el) el.style.display = 'inline-flex';
+};
+
 const _registerSW = () => {
   if (!('serviceWorker' in navigator)) {
     console.warn('[offline] navigator.serviceWorker no disponible');
@@ -21,12 +56,15 @@ const _registerSW = () => {
   }
   navigator.serviceWorker.register('./sw.js').then(reg => {
     console.log('[offline] SW registrado:', reg.scope);
-    if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+    // Si ya hay un SW esperando al cargar (de una sesión anterior), banner.
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      _showUpdateBanner(reg.waiting);
+    }
     reg.addEventListener('updatefound', () => {
       const nw = reg.installing;
       nw && nw.addEventListener('statechange', () => {
         if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          nw.postMessage('SKIP_WAITING');
+          _showUpdateBanner(nw);
         }
       });
     });

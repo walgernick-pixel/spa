@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.3.0';  // Login offline con credenciales hasheadas (PBKDF2) + logout con confirm
+const VERSION    = 'v1.3.1';  // Banner "Nueva versión disponible" en lugar de auto-skipWaiting
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;
@@ -85,6 +85,13 @@ const CDN_ASSETS = [
 ];
 
 // ── Install: precache shell + CDNs
+// NO llamamos skipWaiting() aquí: queremos que el SW nuevo entre en
+// estado 'waiting' cuando ya hay un controller activo, así offline.jsx
+// detecta el update y muestra banner "Nueva versión disponible". El
+// usuario decide cuándo activarla (postMessage SKIP_WAITING via banner).
+//
+// En el primer install (sin controller previo), el SW activa solo —
+// no hay nada que esperar. Solo en updates entra en waiting.
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const shell = await caches.open(SHELL_CACHE);
@@ -94,7 +101,6 @@ self.addEventListener('install', (event) => {
     await Promise.all(CDN_ASSETS.map(url =>
       fetch(url, {mode:'cors'}).then(r => cdn.put(url, r)).catch(() => {})
     ));
-    self.skipWaiting();
   })());
 });
 
