@@ -58,17 +58,19 @@ const ArqueoFn = () => {
       }
     } catch (_) { /* offline / network */ }
 
-    // Fallback: snapshot
-    if (!turnoData) {
-      const snap = await window.leerSnapshotTurno(turnoId);
-      if (snap && snap.turno) {
-        turnoData       = snap.turno;
-        ventasData      = snap.ventas || [];
-        pagosData       = snap.ventaPagos || [];
-        turnoColabsData = snap.turnoColabs || [];
-        arqueosData     = snap.arqueos || [];
-        dataFromSnapshot = true;
-      }
+    // Fallback: snapshot. Defensivo si SW serve offline.jsx stale.
+    if (!turnoData && typeof window.leerSnapshotTurno === 'function') {
+      try {
+        const snap = await window.leerSnapshotTurno(turnoId);
+        if (snap && snap.turno) {
+          turnoData       = snap.turno;
+          ventasData      = snap.ventas || [];
+          pagosData       = snap.ventaPagos || [];
+          turnoColabsData = snap.turnoColabs || [];
+          arqueosData     = snap.arqueos || [];
+          dataFromSnapshot = true;
+        }
+      } catch (_) {}
     }
 
     if (!turnoData) {
