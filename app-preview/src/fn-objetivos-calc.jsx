@@ -111,14 +111,16 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
     const n = (ventasHistoricas || []).length;
     avgTicketSpa = n > 0 ? total / n : 0;
   }
-  // Agrupar ventas del periodo por colab (ejecutor) + comisiones para venta neta
+  // Agrupar por VENDEDORA (lo que cada terapeuta vendió, sin importar quién ejecutó).
+  // Si la venta no tiene vendedora_id (legacy), cae al ejecutor.
+  // 'comisiones' suma comisión ejecutada + comisión por venta (lo que paga el spa por esas ventas).
   const porColab = {};
   ventas.forEach(v => {
-    const id = v.colaboradora_id;
+    const id = v.vendedora_id || v.colaboradora_id;
     if (!id) return;
     if (!porColab[id]) porColab[id] = {ventas:0, comisiones:0, n:0};
     porColab[id].ventas += Number(v.precio_mxn || 0);
-    porColab[id].comisiones += Number(v.comision_mxn || 0);
+    porColab[id].comisiones += Number(v.comision_mxn || 0) + Number(v.comision_venta_mxn || 0);
     porColab[id].n += 1;
   });
   // Evaluar cada colab activa que haya tenido ventas

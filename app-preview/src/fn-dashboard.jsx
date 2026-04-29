@@ -309,29 +309,35 @@ const DashboardFn = () => {
     });
     const categoriasOrd = Object.values(porCategoria).sort((a,b) => b.total - a.total);
 
-    // Top colaboradoras (por ventas ejecutadas)
+    // Top colaboradoras
+    //  ventas   = $ ejecutado (precio_mxn donde colaboradora_id = X)
+    //  vendido  = $ vendido (precio_mxn donde vendedora_id efectiva = X)
+    //  comision = comisión ejecutada + comisión por venta a otros (lo que recibió)
     const porColab = {};
-    ventas.forEach(v => {
-      const k = v.colaboradora_id;
-      if (!k) return;
-      if (!porColab[k]) porColab[k] = {
-        id: k, nombre: v.colaboradora_nombre || 'Sin nombre',
-        alias: v.colaboradora_alias,
-        ventas: 0, comision: 0, propina: 0, n: 0,
+    const ensureColab = (id, nombre, alias) => {
+      if (!porColab[id]) porColab[id] = {
+        id, nombre: nombre || 'Sin nombre', alias,
+        ventas: 0, vendido: 0, comision: 0, propina: 0, n: 0, ventasHechas: 0,
       };
-      porColab[k].ventas += Number(v.precio_mxn || 0);
-      porColab[k].comision += Number(v.comision_mxn || 0);
-      porColab[k].propina += Number(v.propina_mxn || 0);
-      porColab[k].n += 1;
-      // Comisión venta también va al vendedor
-      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
-        if (!porColab[v.vendedora_id]) porColab[v.vendedora_id] = {
-          id: v.vendedora_id, nombre: v.vendedora_nombre || 'Sin nombre',
-          alias: v.vendedora_alias,
-          ventas: 0, comision: 0, propina: 0, n: 0, ventasHechas: 0,
-        };
-        porColab[v.vendedora_id].comision += Number(v.comision_venta_mxn || 0);
-        porColab[v.vendedora_id].ventasHechas = (porColab[v.vendedora_id].ventasHechas || 0) + 1;
+    };
+    ventas.forEach(v => {
+      const ejec = v.colaboradora_id;
+      const vend = v.vendedora_id || v.colaboradora_id; // vendedor efectivo (legacy: ejecutor)
+      if (ejec) {
+        ensureColab(ejec, v.colaboradora_nombre, v.colaboradora_alias);
+        porColab[ejec].ventas += Number(v.precio_mxn || 0);
+        porColab[ejec].comision += Number(v.comision_mxn || 0);
+        porColab[ejec].propina += Number(v.propina_mxn || 0);
+        porColab[ejec].n += 1;
+      }
+      if (vend) {
+        ensureColab(vend, v.vendedora_nombre || v.colaboradora_nombre, v.vendedora_alias || v.colaboradora_alias);
+        porColab[vend].vendido += Number(v.precio_mxn || 0);
+        // Comisión por venta solo cuando vendedor distinto del ejecutor
+        if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
+          porColab[vend].comision += Number(v.comision_venta_mxn || 0);
+          porColab[vend].ventasHechas += 1;
+        }
       }
     });
     const colabsOrd = Object.values(porColab).sort((a,b) => (b.ventas + b.comision) - (a.ventas + a.comision));
@@ -817,9 +823,10 @@ const TopColabsTable = ({colabs, onColabClick}) => {
             <div style={{height:5,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden',marginBottom:2}}>
               <div style={{height:'100%',width:`${pct}%`,background:'var(--clay)',transition:'width .3s'}}/>
             </div>
-            <div style={{fontSize:10,color:'var(--ink-3)',display:'flex',gap:10}} className="num">
+            <div style={{fontSize:10,color:'var(--ink-3)',display:'flex',gap:10,flexWrap:'wrap'}} className="num">
               <span>Recibió ${Math.round(recibido).toLocaleString('es-MX')}</span>
-              {c.ventasHechas > 0 && <span style={{color:'var(--ink-blue)'}}>+ {c.ventasHechas} ventas a otras</span>}
+              <span>Vendió ${Math.round(c.vendido || 0).toLocaleString('es-MX')}</span>
+              {c.ventasHechas > 0 && <span style={{color:'var(--ink-blue)'}}>+ {c.ventasHechas} a otras</span>}
             </div>
           </div>
         );
