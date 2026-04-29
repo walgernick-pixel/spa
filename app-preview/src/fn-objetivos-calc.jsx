@@ -180,9 +180,12 @@ const calcBonoMonto = (obj, bases) => {
   return Math.max(0, bases.exceso) * pct; // default 'exceso'
 };
 
-// bono_encargada: por cada colaboradora que abrió ≥ N turnos, calcular
-// bono sobre las VENTAS TOTALES de esos turnos (todos los terapeutas que ejecutaron)
-const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
+// bono_encargada: por cada persona que abrió ≥ N turnos, calcular
+// bono sobre las VENTAS TOTALES de esos turnos (todos los terapeutas que ejecutaron).
+// El responsable (encargada_id) vive en perfiles, no en colaboradoras —
+// por eso recibimos perfiles para resolver el nombre. Caemos a colabs
+// como fallback por si en algún caso el id sí está ahí.
+const calcBonoEncargada = (obj, ventas, turnos, colabs, perfiles = []) => {
   // Agrupar turnos por encargada_id
   const porEnc = {};
   turnos.forEach(t => {
@@ -206,7 +209,8 @@ const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
   // Evaluar cada encargada
   const resultados = [];
   Object.entries(porEnc).forEach(([id, d]) => {
-    const colab = (colabs || []).find(c => c.id === id);
+    const perfil = (perfiles || []).find(p => p.id === id);
+    const colab  = (colabs   || []).find(c => c.id === id);
     const neta = d.ventas - d.comisiones;
 
     const okTurnos  = obj.cond_turnos_min  == null || d.nTurnos >= Number(obj.cond_turnos_min);
@@ -217,8 +221,9 @@ const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
 
     resultados.push({
       colab_id: id,
-      nombre: colab ? colab.nombre + (colab.apellidos ? ' '+colab.apellidos : '') : 'Encargada desconocida',
-      alias: colab?.alias,
+      nombre: perfil?.nombre_display
+        || (colab ? colab.nombre + (colab.apellidos ? ' '+colab.apellidos : '') : 'Responsable desconocido'),
+      alias: perfil?.username || colab?.alias,
       nTurnos: d.nTurnos,
       ventas: d.ventas,
       neta,

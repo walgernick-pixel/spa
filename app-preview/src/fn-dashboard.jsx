@@ -4,20 +4,8 @@
 // Filtros de periodo · KPIs · flujo de caja por cuenta · gráficas
 // ──────────────────────────────────────────
 
-// Helper: trae TODAS las filas paginando en bloques de 1000
-// (PostgREST corta a 1000 server-side; .limit() del cliente no lo brinca).
-const _fetchAll = async (buildQuery) => {
-  const PAGE = 1000;
-  let all = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
-    if (error) return { data: all, error };
-    if (!data || data.length === 0) break;
-    all = all.concat(data);
-    if (data.length < PAGE) break;
-  }
-  return { data: all, error: null };
-};
+// Alias local al helper global de paginación (evita duplicar lógica)
+const _fetchAll = (buildQuery) => window.fetchAll(buildQuery);
 
 // ─── Helpers de fecha ───
 const _pad2 = n => String(n).padStart(2, '0');
