@@ -68,6 +68,7 @@ const DashboardFn = () => {
   const [customDesde, setCD]    = React.useState('');
   const [customHasta, setCH]    = React.useState('');
   const [loading, setLoading]   = React.useState(true);
+  const showLoading             = useDelayedLoading(loading);
   const [data, setData]         = React.useState(null);
   const [dataPrev, setDataPrev] = React.useState(null);
   const [tendencia, setTendencia] = React.useState(null);
@@ -652,7 +653,7 @@ const DashboardFn = () => {
       </div>
 
       <div style={{padding:'20px 24px 60px',maxWidth:1200,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
-        {loading && <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando datos…</div>}
+        {showLoading && <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando datos…</div>}
 
         {!loading && derivado && (
           <>

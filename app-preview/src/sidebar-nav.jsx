@@ -1,8 +1,42 @@
 // ──────────────────────────────────────────
 // Sidebar con navegación real (enlaces al router)
 // Reemplaza a sidebar.jsx en las pantallas navegables.
+//
+// Modo colapsado: el sidebar se reduce a sólo iconos (~60px) para dar
+// más espacio en tablets. Toggle manual + auto-colapso si viewport
+// < 1100px. Preferencia persiste en localStorage.
 // ──────────────────────────────────────────
-const SidebarNav = ({active}) => {
+
+const SIDEBAR_W_OPEN = 248;
+const SIDEBAR_W_COLLAPSED = 60;
+const COLLAPSE_BREAKPOINT = 1100;
+
+// Hook: estado del sidebar colapsado, con persistencia + auto-colapso responsivo.
+// Reglas:
+//  - Si el usuario eligió manualmente, su preferencia gana hasta que cambie.
+//  - Si nunca eligió y viewport < 1100px, default colapsado.
+//  - Si nunca eligió y viewport >= 1100px, default abierto.
+const useSidebarCollapsed = () => {
+  const stored = (() => { try { return localStorage.getItem('sidebar-collapsed'); } catch(_) { return null; } })();
+  const initial = stored !== null
+    ? stored === 'true'
+    : (typeof window !== 'undefined' && window.innerWidth < COLLAPSE_BREAKPOINT);
+  const [collapsed, setCol] = React.useState(initial);
+  const setCollapsed = (v) => {
+    setCol(v);
+    try { localStorage.setItem('sidebar-collapsed', String(v)); } catch(_) {}
+  };
+  // Auto-toggle on resize, sólo si el usuario no ha forzado preferencia
+  React.useEffect(() => {
+    if (stored !== null) return; // user already chose
+    const onResize = () => setCol(window.innerWidth < COLLAPSE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [stored]);
+  return [collapsed, setCollapsed];
+};
+
+const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
   // Usuario real desde auth (fallback a placeholder si no hay sesión)
   const auth = typeof useAuth === 'function' ? useAuth() : null;
   const perfil = auth?.perfil;
@@ -31,38 +65,76 @@ const SidebarNav = ({active}) => {
     {id:'perm',      label:'Perfiles y permisos',  icon:'shield',   path:'config/perfiles'},
     {id:'respaldo',  label:'Respaldo de datos',    icon:'download', path:'config/respaldo'},
   ];
+  const W = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W_OPEN;
   return (
-    <aside style={{width:248,height:'100%',background:'var(--paper-raised)',borderRight:'1px solid var(--line-1)',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',flexShrink:0}}>
-      {/* Logo */}
-      <div style={{padding:'22px 20px 18px',borderBottom:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}} onClick={()=>navigate('turnos')}>
-        <div style={{width:32,height:32,borderRadius:8,background:'#201c16',display:'flex',alignItems:'center',justifyContent:'center',color:'#faf7f1'}}>
-          <Icon name="flower" size={18} color="#faf7f1" stroke={1.5}/>
+    <aside style={{width:W,height:'100%',background:'var(--paper-raised)',borderRight:'1px solid var(--line-1)',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',flexShrink:0,transition:'width .18s ease'}}>
+      {/* Logo + toggle */}
+      <div style={{padding: collapsed ? '22px 8px 18px' : '22px 20px 18px',borderBottom:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10,position:'relative'}}>
+        <div onClick={()=>navigate('turnos')} title="Inicio" style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',flex:1,minWidth:0}}>
+          <div style={{width:32,height:32,borderRadius:8,background:'#201c16',display:'flex',alignItems:'center',justifyContent:'center',color:'#faf7f1',flexShrink:0,margin: collapsed ? '0 auto' : 0}}>
+            <Icon name="flower" size={18} color="#faf7f1" stroke={1.5}/>
+          </div>
+          {!collapsed && (
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontFamily:'var(--serif)',fontSize:17,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.3,lineHeight:1}}>CashFlow</div>
+              <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:500,letterSpacing:.4,textTransform:'uppercase',marginTop:3}}>Xcalacoco Spa</div>
+            </div>
+          )}
         </div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontFamily:'var(--serif)',fontSize:17,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.3,lineHeight:1}}>CashFlow</div>
-          <div style={{fontSize:10,color:'var(--ink-3)',fontWeight:500,letterSpacing:.4,textTransform:'uppercase',marginTop:3}}>Xcalacoco Spa</div>
-        </div>
+        {/* Botón colapsar/expandir — pegado al borde derecho del sidebar.
+            Va flotando hacia afuera (right:-11) sólo cuando NO está colapsado,
+            así no se sale del aside cuando el aside es de 60px (sería visible
+            encima del contenido). Cuando colapsado, va al centro debajo del
+            logo dentro del padding. */}
+        {!collapsed && (
+          <button
+            onClick={(e)=>{ e.stopPropagation(); onToggleCollapsed(); }}
+            title="Colapsar menú"
+            style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',width:26,height:26,borderRadius:999,background:'var(--paper-raised)',border:'1px solid var(--line-1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-2)',padding:0,boxShadow:'0 1px 3px rgba(0,0,0,.06)',zIndex:2}}
+          >
+            <Icon name="arrow-left" size={13}/>
+          </button>
+        )}
       </div>
 
       {/* Nav */}
-      <nav style={{flex:1,padding:'12px 8px',overflowY:'auto'}}>
+      <nav style={{flex:1,padding:collapsed?'12px 6px':'12px 8px',overflowY:'auto'}}>
+        {/* Botón expandir visible solo en colapsado */}
+        {collapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title="Expandir menú"
+            style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:'10px 0',marginBottom:8,background:'transparent',border:'1px dashed var(--line-1)',borderRadius:8,cursor:'pointer',color:'var(--ink-3)'}}
+          >
+            <Icon name="chev-right" size={14}/>
+          </button>
+        )}
         {items.map(it=>(
-          <NavItem key={it.id} {...it} active={active===it.id} onClick={()=>navigate(it.path)}/>
+          <NavItem key={it.id} {...it} active={active===it.id} collapsed={collapsed} onClick={()=>navigate(it.path)}/>
         ))}
-        <div style={{height:1,background:'var(--line-1)',margin:'10px 12px'}}/>
-        <div style={{fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.8,textTransform:'uppercase',padding:'10px 16px 6px'}}>Configuración</div>
+        <div style={{height:1,background:'var(--line-1)',margin: collapsed ? '10px 8px' : '10px 12px'}}/>
+        {!collapsed && <div style={{fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.8,textTransform:'uppercase',padding:'10px 16px 6px'}}>Configuración</div>}
         {cfg.map(it=>(
-          <NavItem key={it.id} {...it} active={active===it.id} indent onClick={()=>navigate(it.path)}/>
+          <NavItem key={it.id} {...it} active={active===it.id} indent collapsed={collapsed} onClick={()=>navigate(it.path)}/>
         ))}
       </nav>
 
       {/* Footer usuario */}
-      <div style={{padding:'12px',borderTop:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10}}>
-        <Av name={user.name} tone={user.tone} size={36}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',lineHeight:1.1}}>{user.name}</div>
-          <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{user.role}</div>
-        </div>
+      <div style={{padding: collapsed ? '10px 6px' : '12px',borderTop:'1px solid var(--line-1)',display:'flex',flexDirection: collapsed ? 'column' : 'row',alignItems:'center',gap: collapsed ? 6 : 8}}>
+        {!collapsed && <Av name={user.name} tone={user.tone} size={36}/>}
+        {!collapsed && (
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',lineHeight:1.1}}>{user.name}</div>
+            <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{user.role}</div>
+          </div>
+        )}
+        <button
+          onClick={()=>(window.reloadApp || (()=>window.location.reload()))()}
+          title="Recargar app"
+          style={{background:'transparent',border:'none',cursor:'pointer',width:28,height:28,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-3)'}}
+        >
+          <Icon name="refresh" size={15}/>
+        </button>
         <button
           onClick={()=>{ if (typeof logout === 'function') logout(); else navigate('login'); }}
           title="Cerrar sesión"
@@ -75,27 +147,31 @@ const SidebarNav = ({active}) => {
   );
 };
 
-const NavItem = ({label,icon,active,indent,onClick})=>(
+const NavItem = ({label,icon,active,indent,collapsed,onClick})=>(
   <button
     onClick={onClick}
-    style={{width:'100%',display:'flex',alignItems:'center',gap:11,padding:indent?'8px 14px 8px 16px':'9px 14px',fontSize:13,fontWeight:active?600:500,color:active?'var(--ink-0)':'var(--ink-2)',background:active?'var(--paper-sunk)':'transparent',border:'none',borderRadius:8,cursor:'pointer',textAlign:'left',marginBottom:1,fontFamily:'inherit',letterSpacing:-.1}}
+    title={collapsed ? label : undefined}
+    style={{width:'100%',display:'flex',alignItems:'center',justifyContent: collapsed ? 'center' : 'flex-start',gap:11,padding: collapsed ? '10px 0' : (indent?'8px 14px 8px 16px':'9px 14px'),fontSize:13,fontWeight:active?600:500,color:active?'var(--ink-0)':'var(--ink-2)',background:active?'var(--paper-sunk)':'transparent',border:'none',borderRadius:8,cursor:'pointer',textAlign:'left',marginBottom:1,fontFamily:'inherit',letterSpacing:-.1}}
   >
-    <Icon name={icon} size={indent?15:17} color={active?'var(--clay)':'var(--ink-2)'} stroke={active?1.9:1.6}/>
-    <span style={{flex:1}}>{label}</span>
+    <Icon name={icon} size={collapsed ? 18 : (indent?15:17)} color={active?'var(--clay)':'var(--ink-2)'} stroke={active?1.9:1.6}/>
+    {!collapsed && <span style={{flex:1}}>{label}</span>}
   </button>
 );
 
 // ── Shell: sidebar + main area (para todas las pantallas post-login)
-const AppShell = ({active, children}) => (
-  <div style={{width:'100%',height:'100vh',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)',overflow:'hidden'}}>
-    <SidebarNav active={active}/>
-    <main style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
-      {children}
-    </main>
-  </div>
-);
+const AppShell = ({active, children}) => {
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
+  return (
+    <div style={{width:'100%',height:'100vh',display:'flex',fontFamily:'var(--sans)',background:'var(--paper)',color:'var(--ink-1)',overflow:'hidden'}}>
+      <SidebarNav active={active} collapsed={collapsed} onToggleCollapsed={()=>setCollapsed(!collapsed)}/>
+      <main style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+        {children}
+      </main>
+    </div>
+  );
+};
 
 // Hacer disponibles globalmente y sobreescribir el Sidebar viejo
 // para que las pantallas existentes usen el que navega de verdad.
 window.Sidebar = SidebarNav;
-Object.assign(window, { SidebarNav, NavItem, AppShell });
+Object.assign(window, { SidebarNav, NavItem, AppShell, useSidebarCollapsed });

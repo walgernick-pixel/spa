@@ -2,6 +2,8 @@
 
 SPA en React/JSX **sin bundler** sobre Supabase, deployada en Netlify. App monolítica de página única para gestión de un spa: PV, gastos, arqueo, comisiones, dashboard. La app real vive en `app-preview/src/`.
 
+> **Para Claude:** Antes de empezar revisa `WORKLOG.md` (ahí queda el estado en progreso entre sesiones). Al cerrar sesión, actualiza `WORKLOG.md` con cambios sin commitear, decisiones y próximos pasos.
+
 ## Estructura de carpetas
 
 ```
