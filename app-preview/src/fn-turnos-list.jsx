@@ -180,8 +180,16 @@ const TurnosListFn = () => {
     setLoading(true);
 
     // Helper: si offline o si la query falla por red, cae a cache de IDB.
+    // Defensivo: si window.leerTurnosListCache no existe (SW sirviendo
+    // offline.jsx viejo en cache stale), no crasheamos — devolvemos []
+    // y el usuario ve "Aún no hay turnos" en vez de pantalla colgada.
     const fallbackToCache = async () => {
-      const cached = await window.leerTurnosListCache();
+      let cached = [];
+      try {
+        if (typeof window.leerTurnosListCache === 'function') {
+          cached = await window.leerTurnosListCache();
+        }
+      } catch (_) { /* IDB roto, seguir con [] */ }
       setTurnos(cached);
       setLoading(false);
     };

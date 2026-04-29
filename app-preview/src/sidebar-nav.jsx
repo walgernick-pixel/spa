@@ -130,7 +130,8 @@ const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
         )}
         <button
           onClick={()=>(window.reloadApp || (()=>window.location.reload()))()}
-          title="Recargar app"
+          onContextMenu={(e)=>{ e.preventDefault(); if (window.resetApp) window.resetApp(); }}
+          title="Recargar app · Click derecho (o tap largo) para reset completo"
           style={{background:'transparent',border:'none',cursor:'pointer',width:28,height:28,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-3)'}}
         >
           <Icon name="refresh" size={15}/>

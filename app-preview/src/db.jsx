@@ -111,6 +111,36 @@ const reloadApp = async () => {
   window.location.reload();
 };
 
+// Hard reset: desregistra el Service Worker, borra TODOS los caches y
+// recarga. Última instancia cuando algo está roto y el SW está sirviendo
+// código stale incompatible. PIERDE la cola offline (vive en IndexedDB
+// que NO se borra aquí — solo caches del SW). Pide confirmación con
+// warning explícito.
+//
+// IMPORTANTE: NO borra IndexedDB porque ahí vive la cola offline. Solo
+// limpia caches del SW para forzar download fresh de JSX/HTML.
+const resetApp = async () => {
+  let pending = 0;
+  try { if (window.getPendingCount) pending = await window.getPendingCount(); } catch (_) {}
+  const msg = pending > 0
+    ? `RESETEAR la app fuerza descarga de la versión más reciente.\n\n⚠️ Hay ${pending} captura${pending===1?'':'s'} sin sincronizar — NO se pierden (siguen en la cola local).\n\n¿Continuar?`
+    : `RESETEAR la app fuerza descarga de la versión más reciente.\n\nÚtil cuando la app está en estado raro o queda colgada cargando. No pierde datos.\n\n¿Continuar?`;
+  if (!window.confirm(msg)) return;
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {
+    console.warn('[resetApp] cleanup parcial:', e);
+  }
+  window.location.reload();
+};
+
 // Auto-recarga cuando el tab vuelve de background después de >5 min.
 // Cubre el caso "promesas dormidas" que deja la pantalla en Cargando para siempre.
 let _hiddenAt = null;
@@ -124,4 +154,4 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-Object.assign(window, { sb, notify, confirmar, can, localDateISO, fetchAll, useDelayedLoading, reloadApp, SUPABASE_URL, SUPABASE_ANONKEY });
+Object.assign(window, { sb, notify, confirmar, can, localDateISO, fetchAll, useDelayedLoading, reloadApp, resetApp, SUPABASE_URL, SUPABASE_ANONKEY });

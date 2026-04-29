@@ -63,20 +63,23 @@ const PVTurnoFn = () => {
     } catch (_) { /* offline / network — fallback abajo */ }
 
     // Fallback 1: snapshot guardado en IDB (visita previa online a este turno)
-    if (!turnoData) {
-      const snap = await window.leerSnapshotTurno(turnoId);
-      if (snap && snap.turno) {
-        turnoData       = snap.turno;
-        ventasReales    = snap.ventas || [];
-        turnoColabsData = snap.turnoColabs || [];
-        pagosReales     = snap.ventaPagos || [];
-        dataFromSnapshot = true;
-      }
+    // Defensivo: helpers pueden no existir si SW sirve offline.jsx viejo.
+    if (!turnoData && typeof window.leerSnapshotTurno === 'function') {
+      try {
+        const snap = await window.leerSnapshotTurno(turnoId);
+        if (snap && snap.turno) {
+          turnoData       = snap.turno;
+          ventasReales    = snap.ventas || [];
+          turnoColabsData = snap.turnoColabs || [];
+          pagosReales     = snap.ventaPagos || [];
+          dataFromSnapshot = true;
+        }
+      } catch (_) { /* IDB roto, seguir */ }
     }
 
     // Fallback 2: cola offline (turno recién abierto sin internet)
-    if (!turnoData) {
-      turnoData = await window.findQueuedById('turnos', turnoId);
+    if (!turnoData && typeof window.findQueuedById === 'function') {
+      try { turnoData = await window.findQueuedById('turnos', turnoId); } catch (_) {}
     }
 
     if (!turnoData) {
@@ -102,8 +105,14 @@ const PVTurnoFn = () => {
 
     // Mezclar ventas reales (Supabase/snapshot) con ventas encoladas (offline).
     // Las encoladas no tienen los joins de v_ventas, así que las
-    // enriquecemos cliente-side desde el cache de catálogos.
-    const queuedVentas = await window.findQueuedAll('ventas', vv => vv.turno_id === turnoId);
+    // enriquecemos cliente-side desde el cache de catálogos. Defensivo:
+    // findQueuedAll puede no existir si SW sirve offline.jsx stale.
+    let queuedVentas = [];
+    try {
+      if (typeof window.findQueuedAll === 'function') {
+        queuedVentas = await window.findQueuedAll('ventas', vv => vv.turno_id === turnoId);
+      }
+    } catch (_) {}
     const enrichedQueued = queuedVentas.map(qv => {
       const ser = sList.find(x => x.id === qv.servicio_id);
       const col = coList.find(x => x.id === qv.colaboradora_id);
@@ -133,7 +142,12 @@ const PVTurnoFn = () => {
 
     // venta_pagos: reales (de server o snapshot) + encolados de la cola
     const queuedVentaIds = queuedVentas.map(x => x.id);
-    const queuedPagos = await window.findQueuedAll('venta_pagos', vp => queuedVentaIds.includes(vp.venta_id));
+    let queuedPagos = [];
+    try {
+      if (typeof window.findQueuedAll === 'function') {
+        queuedPagos = await window.findQueuedAll('venta_pagos', vp => queuedVentaIds.includes(vp.venta_id));
+      }
+    } catch (_) {}
     setVentaPagos([...pagosReales, ...queuedPagos]);
 
     setServicios(sList);

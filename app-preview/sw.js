@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.2.0';  // PR #73 offline-completo + #72 UX-pulido (sidebar colapsable, refresh con confirm, snapshot turnos)
+const VERSION    = 'v1.2.1';  // Defensive checks contra SW stale + resetApp() helper
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;
