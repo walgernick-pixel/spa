@@ -592,12 +592,10 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
     let error, ventaId, fromQueue = false;
     if (editando) {
       // Edición: solo permitida online (refactor de venta_pagos delete+
-      // insert es complejo offline). Si no hay net, bloquea.
-      if (!navigator.onLine) {
-        setSaving(false);
-        return notify('Editar venta requiere conexión. Borra y vuelve a capturar offline si es urgente.', 'warn');
-      }
-      ({error} = await sb.from('ventas').update(payload).eq('id', venta.id));
+      // Edit con sbUpdate: online directo, offline encola.
+      const r = await window.sbUpdate('ventas', payload, {id: venta.id});
+      error = r.error;
+      fromQueue = !!r.fromQueue;
       ventaId = venta.id;
     } else {
       // Nueva venta: usar sbInsert (online directo, offline encola con UUID cliente)
@@ -610,10 +608,10 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
 
     // Guardar venta_pagos
     if (ventaId) {
-      // Si online + edit: borrar existentes y reinsertar (camino simple).
-      // Offline o nueva venta: solo insert (no hay existentes).
-      if (editando && navigator.onLine) {
-        await sb.from('venta_pagos').delete().eq('venta_id', ventaId);
+      // Edit: borrar existentes (online o cola) y reinsertar.
+      // Nueva venta: solo insert.
+      if (editando) {
+        await window.sbDelete('venta_pagos', {venta_id: ventaId});
       }
       const pagoRows = [];
       if (splitActivo) {
@@ -640,13 +638,7 @@ const FormVenta = ({venta, turnoId, turnoFecha, servicios, canales, colabs, cuen
     // tolera duplicate-key con código 23505 — ver offline.jsx).
     const tcRows = [{turno_id: turnoId, colaboradora_id: colabId}];
     if (vendedoraSel) tcRows.push({turno_id: turnoId, colaboradora_id: vendedoraSel.id});
-    if (navigator.onLine && window.sb) {
-      await sb.from('turno_colaboradoras').upsert(tcRows, {onConflict:'turno_id,colaboradora_id', ignoreDuplicates:true});
-    } else {
-      for (const row of tcRows) {
-        await window.enqueue({op:'insert', table:'turno_colaboradoras', payload: row});
-      }
-    }
+    await window.sbUpsert('turno_colaboradoras', tcRows, {onConflict:'turno_id,colaboradora_id', ignoreDuplicates:true});
 
     setSaving(false);
     if (fromQueue) {

@@ -163,6 +163,9 @@ const _injectBanner = () => {
   document.body.appendChild(badge);
 };
 
+// Track cuándo nos pusimos offline para alertar tras 30 min con pendientes
+let _offlineSinceTs = null;
+
 const _updateBanner = async () => {
   const el = document.getElementById('offline-banner');
   const txt = document.getElementById('offline-banner-text');
@@ -171,12 +174,25 @@ const _updateBanner = async () => {
   let pending = 0;
   try { pending = await getPendingCount(); } catch (_) {}
 
-  // Banner offline
-  if (el) el.style.display = online ? 'none' : 'block';
+  // Tracker de tiempo offline
+  if (!online && _offlineSinceTs === null) _offlineSinceTs = Date.now();
+  if (online) _offlineSinceTs = null;
+  const elapsedMin = _offlineSinceTs ? Math.floor((Date.now() - _offlineSinceTs) / 60000) : 0;
+
+  // Banner offline — escala el aviso si llevas >30 min con pendientes
+  if (el) {
+    el.style.display = online ? 'none' : 'block';
+    // Color: amber por defecto, rojo cuando >30 min con pendientes (riesgo de pérdida)
+    el.style.background = (!online && elapsedMin >= 30 && pending > 0) ? '#9b3b2a' : '#b07228';
+  }
   if (!online && txt) {
-    txt.textContent = pending > 0
-      ? `⚡ Sin conexión — ${pending} captura${pending===1?'':'s'} pendiente${pending===1?'':'s'} de sincronizar`
-      : '⚡ Sin conexión — capturas se encolarán';
+    if (elapsedMin >= 30 && pending > 0) {
+      txt.textContent = `⚠️ ${elapsedMin} min sin conexión · ${pending} captura${pending===1?'':'s'} pendiente${pending===1?'':'s'}. Conecta cuando puedas.`;
+    } else if (pending > 0) {
+      txt.textContent = `⚡ Sin conexión — puedes seguir trabajando · ${pending} pendiente${pending===1?'':'s'} se sincronizan al volver.`;
+    } else {
+      txt.textContent = '⚡ Sin conexión — puedes seguir trabajando. Sincronizamos al volver.';
+    }
   }
 
   // Badge (online con pendientes pendientes = sincronizando)
@@ -190,6 +206,10 @@ const _updateBanner = async () => {
     }
   }
 };
+
+// Refrescar banner periódicamente para que el aviso de "30 min" aparezca aunque
+// no haya cambios en cola (el counter de minutos avanza con el tiempo).
+setInterval(() => { if (!navigator.onLine) _updateBanner(); }, 60000);
 
 // Cuando el DOM esté listo, montar banner + listeners
 if (document.readyState === 'loading') {
@@ -318,6 +338,8 @@ const _syncOne = async (item) => {
       let q = window.sb.from(item.table).delete();
       Object.entries(item.filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
       res = await q;
+    } else if (item.op === 'upsert') {
+      res = await window.sb.from(item.table).upsert(item.payload, item.options || {});
     } else {
       throw new Error('Op desconocida: ' + item.op);
     }
@@ -466,6 +488,97 @@ const sbUpdate = async (table, payload, filter) => {
   }
 };
 
+// Delete offline-aware
+const sbDelete = async (table, filter) => {
+  if (!navigator.onLine || !window.sb) {
+    await enqueue({op: 'delete', table, filter});
+    return { data: null, error: null, fromQueue: true };
+  }
+  try {
+    let q = window.sb.from(table).delete();
+    Object.entries(filter || {}).forEach(([k, v]) => { q = q.eq(k, v); });
+    const res = await q;
+    if (res.error && _isNetworkError(res.error)) {
+      await enqueue({op: 'delete', table, filter});
+      return { data: null, error: null, fromQueue: true };
+    }
+    return res;
+  } catch (e) {
+    if (_isNetworkError(e)) {
+      await enqueue({op: 'delete', table, filter});
+      return { data: null, error: null, fromQueue: true };
+    }
+    return { data: null, error: e, fromQueue: false };
+  }
+};
+
+// Upsert offline-aware. Encola con op:'upsert' y options (onConflict, ignoreDuplicates).
+const sbUpsert = async (table, payload, options = {}) => {
+  // Si payload es array, asegura ids; si es objeto, también
+  const ensureIds = (p) => {
+    if (!p.id) p.id = genUUID();
+    return p;
+  };
+  if (Array.isArray(payload)) payload = payload.map(ensureIds);
+  else payload = ensureIds(payload);
+
+  if (!navigator.onLine || !window.sb) {
+    await enqueue({op: 'upsert', table, payload, options});
+    return { data: payload, error: null, fromQueue: true };
+  }
+  try {
+    let q = window.sb.from(table).upsert(payload, options);
+    if (options.select) q = q.select(options.select);
+    const res = await q;
+    if (res.error && _isNetworkError(res.error)) {
+      await enqueue({op: 'upsert', table, payload, options});
+      return { data: payload, error: null, fromQueue: true };
+    }
+    return res;
+  } catch (e) {
+    if (_isNetworkError(e)) {
+      await enqueue({op: 'upsert', table, payload, options});
+      return { data: payload, error: null, fromQueue: true };
+    }
+    return { data: null, error: e, fromQueue: false };
+  }
+};
+
+// ──────────────────────────────────────────
+// Snapshot de turno actual — cache para reabrir offline
+// ──────────────────────────────────────────
+// Cuando estás online y entras al PV/Arqueo de un turno, guardamos
+// {turno, ventas, ventaPagos, turnoColabs, arqueos, ts} en IndexedDB
+// bajo la key `turno-snap:<id>`. Al reabrir offline (sin red), se lee
+// del snapshot + se mezclan las ventas encoladas para que el flujo de
+// captura/firma/pago/arqueo siga funcionando hasta que vuelva la red.
+
+// Merge con snapshot existente: cada pantalla escribe su slice (PV escribe
+// ventas/pagos/colabs, Arqueo escribe lo mismo + arqueos). Last-writer-wins
+// por clave, así PV no borra los arqueos que Arqueo guardó antes.
+const snapshotTurno = async (turnoId, data) => {
+  const existing = (await leerSnapshotTurno(turnoId)) || {};
+  await idbPut('catalog', `turno-snap:${turnoId}`, {...existing, ...data, ts: Date.now()});
+};
+
+const leerSnapshotTurno = async (turnoId) => {
+  return await idbGet('catalog', `turno-snap:${turnoId}`);
+};
+
+// Snapshot del listado de turnos. Cache la versión enriquecida (con
+// encargada_nombre y arqueoStatus) que pinta TurnosListFn, así offline
+// se ve la misma lista que se vio la última vez online. La lista incluye
+// el turno abierto, lo que permite a la encargada darle click y entrar
+// (combinado con turno-snap:<id> para los datos detallados).
+const cacheTurnosList = async (turnos) => {
+  await idbPut('catalog', 'turnos-list', {turnos: turnos || [], ts: Date.now()});
+};
+
+const leerTurnosListCache = async () => {
+  const cached = await idbGet('catalog', 'turnos-list');
+  return cached?.turnos || [];
+};
+
 // Reintenta la cola al cargar, una vez los catálogos estén refrescados
 setTimeout(() => { drainQueue(); }, 3000);
 
@@ -474,5 +587,9 @@ Object.assign(window, {
   leerCatalogo, consultarCatalogo, refrescarCatalogos,
   // Queue + sync
   enqueue, drainQueue, getPendingCount, getPending, getFailed,
-  findQueuedById, findQueuedAll, onQueueChange, sbInsert, sbUpdate, genUUID,
+  findQueuedById, findQueuedAll, onQueueChange,
+  sbInsert, sbUpdate, sbDelete, sbUpsert, genUUID,
+  // Snapshot de turno
+  snapshotTurno, leerSnapshotTurno,
+  cacheTurnosList, leerTurnosListCache,
 });
