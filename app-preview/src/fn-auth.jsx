@@ -106,11 +106,126 @@ const canReal = (permiso) => {
 // Sobreescribir el stub de db.jsx con la implementación real
 window.can = canReal;
 
-// Logout
+// ──────────────────────────────────────────
+// Cache offline de credenciales (PBKDF2 + IndexedDB)
+// ──────────────────────────────────────────
+// Permite a la encargada iniciar sesión sin internet si ya entró antes
+// online (mismo dispositivo). Almacena hash PBKDF2-SHA256 de la
+// contraseña + perfil + rolData. Hash expira a los 14 días desde el
+// último login online exitoso (re-cachea cada vez).
+
+const _cryptoOK = typeof crypto !== 'undefined' && crypto.subtle && typeof TextEncoder !== 'undefined';
+const AUTH_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 días
+
+const _pbkdf2 = async (password, salt, iterations = 100000) => {
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {name: 'PBKDF2', salt, iterations, hash: 'SHA-256'},
+    baseKey,
+    256
+  );
+  return new Uint8Array(bits);
+};
+
+const _arraysEqual = (a, b) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+};
+
+const cacheAuthOffline = async (username, password, perfil, rolData) => {
+  if (!_cryptoOK || typeof window.idbPut !== 'function') return;
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const hash = await _pbkdf2(password, salt);
+    await window.idbPut('catalog', `auth:${username.toLowerCase()}`, {
+      username: username.toLowerCase(),
+      perfil, rolData,
+      salt: Array.from(salt),
+      hash: Array.from(hash),
+      cachedAt: Date.now(),
+    });
+  } catch (e) { console.warn('[auth] cache offline falló:', e); }
+};
+
+// Verifica credenciales contra cache local. Devuelve {perfil, rolData} si OK.
+const verifyOfflineAuth = async (username, password) => {
+  if (!_cryptoOK || typeof window.idbGet !== 'function') return null;
+  try {
+    const cached = await window.idbGet('catalog', `auth:${username.toLowerCase()}`);
+    if (!cached) return null;
+    if (Date.now() - cached.cachedAt > AUTH_CACHE_TTL_MS) return null; // expirado
+    const hash = await _pbkdf2(password, new Uint8Array(cached.salt));
+    if (!_arraysEqual(hash, new Uint8Array(cached.hash))) return null;
+    return {perfil: cached.perfil, rolData: cached.rolData};
+  } catch (e) { console.warn('[auth] verify offline falló:', e); return null; }
+};
+
+// Login con fallback offline: intenta server primero, cae al cache si
+// no hay red o si el server no responde por net error. Si el server
+// dice "credenciales inválidas", NO intenta offline (la contraseña
+// realmente está mal).
+const loginWithFallback = async (usuario, password) => {
+  // 1) Intentar online
+  if (navigator.onLine) {
+    try {
+      const email = usernameToEmail(usuario);
+      const {data, error} = await sb.auth.signInWithPassword({email, password});
+      if (!error && data?.user) {
+        // Cargar perfil + rol y cachear para próxima sesión offline
+        const {data: perfil} = await sb.from('perfiles').select('*').eq('id', data.user.id).maybeSingle();
+        let rolData = null;
+        if (perfil?.rol) {
+          const {data: rol} = await sb.from('roles').select('clave, nombre, descripcion, protegido, permisos').eq('clave', perfil.rol).maybeSingle();
+          rolData = rol || null;
+        }
+        await cacheAuthOffline(usuario, password, perfil, rolData);
+        return {ok: true, online: true};
+      }
+      if (error && /invalid login credentials/i.test(error.message || '')) {
+        return {ok: false, error: 'Usuario o contraseña incorrectos'};
+      }
+      // Cualquier otro error (red, server) → caer a offline
+    } catch (_) { /* network — caer a offline */ }
+  }
+
+  // 2) Fallback al cache offline
+  const cached = await verifyOfflineAuth(usuario, password);
+  if (cached) {
+    window.__auth.session = null; // no hay session real, sólo perfil offline
+    window.__auth.perfil  = cached.perfil;
+    window.__auth.rolData = cached.rolData;
+    window.__auth.offline = true; // bandera para UI
+    window.__auth.loading = false;
+    notifyAuthListeners();
+    return {ok: true, online: false};
+  }
+
+  return {
+    ok: false,
+    error: navigator.onLine
+      ? 'Usuario o contraseña incorrectos'
+      : 'Sin conexión y este usuario no tiene credenciales guardadas en este dispositivo. Conéctate al menos una vez para habilitar login offline.',
+  };
+};
+
+// Logout con confirmación. Warning explícito si offline para evitar
+// que la encargada se quede afuera por accidente.
 const logout = async () => {
-  await sb.auth.signOut();
+  const offline = !navigator.onLine || !!window.__auth?.offline;
+  const msg = offline
+    ? '⚠️ Estás SIN CONEXIÓN.\n\nSi cierras sesión NO podrás reentrar offline hasta que vuelva internet (a menos que tengas tus credenciales bien recordadas y este dispositivo las tenga cacheadas).\n\n¿Confirmar?'
+    : '¿Cerrar sesión?';
+  if (!window.confirm(msg)) return;
+  try { await sb.auth.signOut(); } catch (_) {}
   window.__auth.session = null;
   window.__auth.perfil = null;
+  window.__auth.rolData = null;
+  window.__auth.offline = false;
   notifyAuthListeners();
   navigate('login');
 };
@@ -127,11 +242,10 @@ const LoginFn = () => {
     setError('');
     if (!usuario.trim() || !password) return setError('Faltan datos');
     setLoading(true);
-    const email = usernameToEmail(usuario);
-    const {error} = await sb.auth.signInWithPassword({ email, password });
+    const result = await loginWithFallback(usuario, password);
     setLoading(false);
-    if (error) return setError(error.message === 'Invalid login credentials' ? 'Usuario o contraseña incorrectos' : error.message);
-    notify('Sesión iniciada');
+    if (!result.ok) return setError(result.error);
+    notify(result.online ? 'Sesión iniciada' : 'Sesión iniciada (offline · datos locales)');
     navigate('turnos');
   };
 
@@ -191,4 +305,9 @@ if (typeof initAuth === 'function' && !window.__auth_inited) {
   initAuth();
 }
 
-Object.assign(window, { Login: LoginFn, useAuth, initAuth, canReal, logout, DOMINIO_INTERNO, usernameToEmail });
+Object.assign(window, {
+  Login: LoginFn, useAuth, initAuth, canReal, logout,
+  DOMINIO_INTERNO, usernameToEmail,
+  // Offline auth helpers
+  cacheAuthOffline, verifyOfflineAuth, loginWithFallback,
+});

@@ -592,4 +592,6 @@ Object.assign(window, {
   // Snapshot de turno
   snapshotTurno, leerSnapshotTurno,
   cacheTurnosList, leerTurnosListCache,
+  // IDB low-level (lo usa fn-auth para cache de credenciales offline)
+  idbPut, idbGet,
 });
