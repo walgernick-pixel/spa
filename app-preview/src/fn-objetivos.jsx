@@ -126,7 +126,7 @@ const ObjetivosFn = () => {
                   periodoTipo={periodoTipo}
                   periodoFecha={periodoFecha}
                   ventas={ventas} ventasYoY={ventasYoY} ventasHist={ventasHist}
-                  turnos={turnos} colabs={colabs}
+                  turnos={turnos} colabs={colabs} perfiles={perfiles}
                   onConfigurar={()=>configurar(tipo.id)}
                   onToggleActivo={()=>obj && toggleActivo(obj)}
                 />
@@ -153,7 +153,7 @@ const ObjetivosFn = () => {
 };
 
 // ─── Slot de objetivo (card dedicada por tipo) ───
-const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasYoY, ventasHist, turnos, colabs, onConfigurar, onToggleActivo}) => {
+const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasYoY, ventasHist, turnos, colabs, perfiles, onConfigurar, onToggleActivo}) => {
   const color = tipoInfo.color;
   const configurado = !!obj;
   const activo = obj?.activo;
