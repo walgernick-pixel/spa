@@ -149,46 +149,87 @@ const PVTurnoFn = () => {
 
   React.useEffect(()=>{ cargar(); }, [cargar]);
 
-  // Borrar venta
+  // Helper: actualiza state local + snapshot tras una mutación.
+  // Es la pieza clave para que offline se sienta en tiempo real:
+  // sbUpdate encola pero la UI debe reflejar el cambio YA, y arqueo
+  // (que lee snapshot al cargar) debe ver lo último también.
+  const persistTurnoCol = (nextTurnoCol) => {
+    setTurnoCol(nextTurnoCol);
+    if (window.snapshotTurno) window.snapshotTurno(turnoId, {turnoColabs: nextTurnoCol});
+  };
+  const persistVentas = (nextVentas) => {
+    setVentas(nextVentas);
+    if (window.snapshotTurno) window.snapshotTurno(turnoId, {ventas: nextVentas});
+  };
+
+  // Borrar venta (soft delete via flag eliminado)
   const borrarVenta = async (v) => {
     if (!confirmar(`¿Borrar el servicio de ${v.colaboradora_nombre} por $${Number(v.precio).toLocaleString('es-MX')}?`)) return;
     const {error, fromQueue} = await window.sbUpdate('ventas', {eliminado: new Date().toISOString()}, {id: v.id});
     if (error) return notify('Error: '+error.message,'err');
+    persistVentas(ventas.filter(x => x.id !== v.id));
     notify(fromQueue ? 'Servicio borrado (offline · se sincroniza al volver)' : 'Servicio borrado');
-    cargar();
   };
 
   // Marcar/desmarcar pago de comisión (sin firma — la firma es acción aparte)
   const togglePago = async (colabId) => {
     const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
+    const now = new Date().toISOString();
     let res;
+    let nextCol = [...turnoColabs];
     if (existing && existing.comision_pagada_at) {
       // DESMARCAR: borra pago Y firma (tendrá que volver a firmar)
       if (existing.firma_data_url) {
         if (!confirmar('Al desmarcar el pago también se borrará la firma. ¿Continuar?')) return;
       }
-      res = await window.sbUpdate('turno_colaboradoras', {comision_pagada_at: null, firma_data_url: null, firmado_at: null}, {id: existing.id});
+      res = await window.sbUpdate('turno_colaboradoras',
+        {comision_pagada_at: null, firma_data_url: null, firmado_at: null},
+        {id: existing.id});
+      if (!res.error) {
+        nextCol = nextCol.map(tc => tc.id === existing.id
+          ? {...tc, comision_pagada_at: null, firma_data_url: null, firmado_at: null}
+          : tc);
+      }
     } else if (existing) {
-      res = await window.sbUpdate('turno_colaboradoras', {comision_pagada_at: new Date().toISOString()}, {id: existing.id});
+      res = await window.sbUpdate('turno_colaboradoras', {comision_pagada_at: now}, {id: existing.id});
+      if (!res.error) {
+        nextCol = nextCol.map(tc => tc.id === existing.id ? {...tc, comision_pagada_at: now} : tc);
+      }
     } else {
-      res = await window.sbInsert('turno_colaboradoras', {turno_id: turnoId, colaboradora_id: colabId, comision_pagada_at: new Date().toISOString()});
+      // Nueva fila: usar UUID cliente para que el snapshot pueda
+      // referenciarlo y guardarFirma encuentre el existing aunque
+      // estemos offline (la fila aún no existe en server).
+      const newRow = {
+        id: window.genUUID(),
+        turno_id: turnoId,
+        colaboradora_id: colabId,
+        comision_pagada_at: now,
+        firma_data_url: null,
+        firmado_at: null,
+      };
+      res = await window.sbInsert('turno_colaboradoras', newRow);
+      if (!res.error) nextCol = [...nextCol, newRow];
     }
     if (res.error) return notify('Error: '+res.error.message,'err');
+    persistTurnoCol(nextCol);
     if (res.fromQueue) notify('Pago registrado (offline · se sincroniza al volver)', 'warn');
-    cargar();
   };
 
   // Guardar la firma digital de una colaboradora
   const guardarFirma = async (colabId, dataUrl) => {
     const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
     if (!existing) return notify('Primero marca como pagado','err');
+    const fechaFirma = new Date().toISOString();
     const {error, fromQueue} = await window.sbUpdate('turno_colaboradoras', {
       firma_data_url: dataUrl,
-      firmado_at: new Date().toISOString(),
+      firmado_at: fechaFirma,
     }, {id: existing.id});
     if (error) return notify('Error: '+error.message,'err');
+    const nextCol = turnoColabs.map(tc => tc.id === existing.id
+      ? {...tc, firma_data_url: dataUrl, firmado_at: fechaFirma}
+      : tc);
+    persistTurnoCol(nextCol);
     notify(fromQueue ? 'Firma guardada (offline · se sincroniza al volver) ✓' : 'Firma guardada ✓');
-    cargar();
   };
 
   // Ir al arqueo (NO cierra el turno, solo navega)
