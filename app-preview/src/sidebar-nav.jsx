@@ -57,12 +57,19 @@ const SidebarNav = ({active}) => {
       </nav>
 
       {/* Footer usuario */}
-      <div style={{padding:'12px',borderTop:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10}}>
+      <div style={{padding:'12px',borderTop:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:8}}>
         <Av name={user.name} tone={user.tone} size={36}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',lineHeight:1.1}}>{user.name}</div>
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{user.role}</div>
         </div>
+        <button
+          onClick={()=>(window.reloadApp || (()=>window.location.reload()))()}
+          title="Recargar app"
+          style={{background:'transparent',border:'none',cursor:'pointer',width:28,height:28,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-3)'}}
+        >
+          <Icon name="refresh" size={15}/>
+        </button>
         <button
           onClick={()=>{ if (typeof logout === 'function') logout(); else navigate('login'); }}
           title="Cerrar sesión"

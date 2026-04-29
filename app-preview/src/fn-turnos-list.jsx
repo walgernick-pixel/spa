@@ -140,6 +140,7 @@ const TurnosListFn = () => {
   const [turnos, setTurnos]       = React.useState([]);
   const [perfilesMap, setPfMap]   = React.useState({}); // id → {nombre_display, username}
   const [loading, setLoading]     = React.useState(true);
+  const showLoading               = useDelayedLoading(loading);
   const [abriendo, setAbriendo]   = React.useState(false);
   const [modalRetro, setModalR]   = React.useState(false);
   const [preset, setPreset]       = React.useState('semana');
@@ -373,9 +374,11 @@ const TurnosListFn = () => {
 
             {/* Lista de turnos */}
             {loading ? (
-              <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center',color:'var(--ink-3)',fontSize:13}}>
-                Cargando turnos…
-              </div>
+              showLoading ? (
+                <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center',color:'var(--ink-3)',fontSize:13}}>
+                  Cargando turnos…
+                </div>
+              ) : null
             ) : turnos.length === 0 ? (
               <EmptyTurnos onAbrir={abrirTurno} abriendo={abriendo}/>
             ) : turnosFiltrados.length === 0 ? (

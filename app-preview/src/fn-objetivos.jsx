@@ -19,6 +19,7 @@ const ObjetivosFn = () => {
   const [colabs, setColabs]      = React.useState([]);
   const [perfiles, setPerfiles]  = React.useState([]);
   const [loading, setLoading]    = React.useState(true);
+  const showLoading              = useDelayedLoading(loading);
   const [modal, setModal]        = React.useState(null);
 
   // periodo_fecha del periodo actual según tipo seleccionado
@@ -113,7 +114,7 @@ const ObjetivosFn = () => {
 
       <div style={{padding:'20px 24px 60px',maxWidth:1100,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
         {loading ? (
-          <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando objetivos…</div>
+          showLoading ? <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando objetivos…</div> : null
         ) : (
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(440px, 1fr))',gap:16}}>
             {TIPOS_OBJETIVOS.map(tipo => {

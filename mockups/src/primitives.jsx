@@ -42,6 +42,7 @@ const Icon = ({name, size=18, stroke=1.6, color='currentColor', style={}}) => {
     case 'user':    return (<svg viewBox={v} style={s}><circle {...common} cx="12" cy="8" r="4"/><path {...common} d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>);
     case 'filter':  return P('M3 5h18l-7 8v5l-4 2v-7L3 5z');
     case 'home':    return P('M3 12l9-9 9 9M5 10v11h14V10');
+    case 'refresh': return P('M21 12a9 9 0 0 1-15.36 6.36L3 16M3 12a9 9 0 0 1 15.36-6.36L21 8M21 3v5h-5M3 21v-5h5');
     default: return null;
   }
 };

@@ -74,4 +74,37 @@ const fetchAll = async (buildQuery) => {
   return { data: all, error: null };
 };
 
-Object.assign(window, { sb, notify, confirmar, can, localDateISO, fetchAll, SUPABASE_URL, SUPABASE_ANONKEY });
+// ──────────────────────────────────────────
+// Pulido de carga
+// ──────────────────────────────────────────
+
+// useDelayedLoading: devuelve true sólo si `loading` lleva > ms ms en true.
+// Evita el flicker del "Cargando…" en queries rápidas (la mayoría < 200ms).
+// Uso: const showLoading = useDelayedLoading(loading);
+const useDelayedLoading = (loading, ms = 250) => {
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    if (!loading) { setShow(false); return; }
+    const t = setTimeout(() => setShow(true), ms);
+    return () => clearTimeout(t);
+  }, [loading, ms]);
+  return show;
+};
+
+// Recarga forzada (limpia estado en memoria). Botón ↻ del header lo usa.
+const reloadApp = () => window.location.reload();
+
+// Auto-recarga cuando el tab vuelve de background después de >5 min.
+// Cubre el caso "promesas dormidas" que deja la pantalla en Cargando para siempre.
+let _hiddenAt = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    _hiddenAt = Date.now();
+  } else if (document.visibilityState === 'visible' && _hiddenAt) {
+    const elapsed = Date.now() - _hiddenAt;
+    _hiddenAt = null;
+    if (elapsed > 5 * 60 * 1000) reloadApp();
+  }
+});
+
+Object.assign(window, { sb, notify, confirmar, can, localDateISO, fetchAll, useDelayedLoading, reloadApp, SUPABASE_URL, SUPABASE_ANONKEY });

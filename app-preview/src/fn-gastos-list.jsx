@@ -90,6 +90,7 @@ const useMetricasMes = () => {
 const GastosListFn = ({onRowClick, onNew}) => {
   const [gastos, setGastos]         = React.useState([]);
   const [loading, setLoading]       = React.useState(true);
+  const showLoading                 = useDelayedLoading(loading);
   const [search, setSearch]         = React.useState('');
   const [periodo, setPeriodo]       = React.useState('ult_6m');
   const [catFiltro, setCatFiltro]   = React.useState('todas');
@@ -286,7 +287,7 @@ const GastosListFn = ({onRowClick, onNew}) => {
         {/* Cuerpo lista */}
         <div style={{flex:1,overflowY:'auto',padding:'0 36px 40px'}}>
           {loading ? (
-            <div style={{padding:'48px 18px',textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando gastos…</div>
+            showLoading ? <div style={{padding:'48px 18px',textAlign:'center',color:'var(--ink-3)',fontSize:13}}>Cargando gastos…</div> : null
           ) : gastosFiltrados.length === 0 ? (
             <EmptyState search={search} hayFiltros={hayFiltros} onNew={onNew} onLimpiar={limpiarFiltros}/>
           ) : (
