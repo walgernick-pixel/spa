@@ -58,4 +58,20 @@ const localDateISO = (d = new Date()) => {
 // ──────────────────────────────────────────
 const can = (_permiso) => true;
 
-Object.assign(window, { sb, notify, confirmar, can, localDateISO, SUPABASE_URL, SUPABASE_ANONKEY });
+// Helper: trae TODAS las filas paginando en bloques de 1000
+// (PostgREST corta a 1000 server-side; .limit() del cliente no lo brinca).
+// Recibe una factoría que construye un nuevo query cada llamada.
+const fetchAll = async (buildQuery) => {
+  const PAGE = 1000;
+  let all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+};
+
+Object.assign(window, { sb, notify, confirmar, can, localDateISO, fetchAll, SUPABASE_URL, SUPABASE_ANONKEY });

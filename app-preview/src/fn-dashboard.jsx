@@ -4,20 +4,8 @@
 // Filtros de periodo · KPIs · flujo de caja por cuenta · gráficas
 // ──────────────────────────────────────────
 
-// Helper: trae TODAS las filas paginando en bloques de 1000
-// (PostgREST corta a 1000 server-side; .limit() del cliente no lo brinca).
-const _fetchAll = async (buildQuery) => {
-  const PAGE = 1000;
-  let all = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
-    if (error) return { data: all, error };
-    if (!data || data.length === 0) break;
-    all = all.concat(data);
-    if (data.length < PAGE) break;
-  }
-  return { data: all, error: null };
-};
+// Alias local al helper global de paginación (evita duplicar lógica)
+const _fetchAll = (buildQuery) => window.fetchAll(buildQuery);
 
 // ─── Helpers de fecha ───
 const _pad2 = n => String(n).padStart(2, '0');
@@ -234,7 +222,7 @@ const DashboardFn = () => {
     const cuentaMap = {};
     cuentas.forEach(c => cuentaMap[c.id] = {
       id: c.id, label: c.label, tipo: c.tipo, moneda: c.moneda,
-      ingresos: 0, comisiones: 0, gastos: 0, n_ventas: 0, n_gastos: 0,
+      ingresos: 0, comisiones: 0, gastos: 0, ajusteArqueo: 0, n_ventas: 0, n_gastos: 0, n_arqueos: 0,
     });
     ventas.forEach(v => {
       if (!cuentaMap[v.cuenta_id]) return;
@@ -252,9 +240,25 @@ const DashboardFn = () => {
       cuentaMap[g.cuenta_id].gastos += Number(g.monto || 0);
       cuentaMap[g.cuenta_id].n_gastos += 1;
     });
+    // Ajuste arqueo: incorporar la realidad operativa (sobrantes/faltantes)
+    // por cuenta. Esto captura escenarios como "comisión USD pagada en MXN
+    // porque no había efectivo USD" — refleja en flujo de caja la realidad.
+    // Solo arqueos con neto_reportado != null contribuyen (los parciales se
+    // ignoran porque no hay dato confiable aún).
+    arqueos.forEach(a => {
+      if (a.diferencia === null || a.diferencia === undefined) return;
+      if (a.neto_reportado === null || a.neto_reportado === undefined) return;
+      if (!cuentaMap[a.cuenta_id]) return;
+      cuentaMap[a.cuenta_id].ajusteArqueo += Number(a.diferencia);
+      cuentaMap[a.cuenta_id].n_arqueos += 1;
+    });
     const flujoPorCuenta = Object.values(cuentaMap)
-      .map(c => ({...c, balance: c.ingresos - c.comisiones - c.gastos}))
-      .filter(c => c.ingresos > 0 || c.gastos > 0)
+      .map(c => ({
+        ...c,
+        balance: c.ingresos - c.comisiones - c.gastos,
+        balanceReal: c.ingresos - c.comisiones - c.gastos + c.ajusteArqueo,
+      }))
+      .filter(c => c.ingresos > 0 || c.gastos > 0 || c.ajusteArqueo !== 0)
       .sort((a,b) => {
         // Efectivo MXN primero, luego tipo alfabético, luego moneda
         if (a.tipo === 'efectivo' && b.tipo !== 'efectivo') return -1;
@@ -305,29 +309,35 @@ const DashboardFn = () => {
     });
     const categoriasOrd = Object.values(porCategoria).sort((a,b) => b.total - a.total);
 
-    // Top colaboradoras (por ventas ejecutadas)
+    // Top colaboradoras
+    //  ventas   = $ ejecutado (precio_mxn donde colaboradora_id = X)
+    //  vendido  = $ vendido (precio_mxn donde vendedora_id efectiva = X)
+    //  comision = comisión ejecutada + comisión por venta a otros (lo que recibió)
     const porColab = {};
-    ventas.forEach(v => {
-      const k = v.colaboradora_id;
-      if (!k) return;
-      if (!porColab[k]) porColab[k] = {
-        id: k, nombre: v.colaboradora_nombre || 'Sin nombre',
-        alias: v.colaboradora_alias,
-        ventas: 0, comision: 0, propina: 0, n: 0,
+    const ensureColab = (id, nombre, alias) => {
+      if (!porColab[id]) porColab[id] = {
+        id, nombre: nombre || 'Sin nombre', alias,
+        ventas: 0, vendido: 0, comision: 0, propina: 0, n: 0, ventasHechas: 0,
       };
-      porColab[k].ventas += Number(v.precio_mxn || 0);
-      porColab[k].comision += Number(v.comision_mxn || 0);
-      porColab[k].propina += Number(v.propina_mxn || 0);
-      porColab[k].n += 1;
-      // Comisión venta también va al vendedor
-      if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
-        if (!porColab[v.vendedora_id]) porColab[v.vendedora_id] = {
-          id: v.vendedora_id, nombre: v.vendedora_nombre || 'Sin nombre',
-          alias: v.vendedora_alias,
-          ventas: 0, comision: 0, propina: 0, n: 0, ventasHechas: 0,
-        };
-        porColab[v.vendedora_id].comision += Number(v.comision_venta_mxn || 0);
-        porColab[v.vendedora_id].ventasHechas = (porColab[v.vendedora_id].ventasHechas || 0) + 1;
+    };
+    ventas.forEach(v => {
+      const ejec = v.colaboradora_id;
+      const vend = v.vendedora_id || v.colaboradora_id; // vendedor efectivo (legacy: ejecutor)
+      if (ejec) {
+        ensureColab(ejec, v.colaboradora_nombre, v.colaboradora_alias);
+        porColab[ejec].ventas += Number(v.precio_mxn || 0);
+        porColab[ejec].comision += Number(v.comision_mxn || 0);
+        porColab[ejec].propina += Number(v.propina_mxn || 0);
+        porColab[ejec].n += 1;
+      }
+      if (vend) {
+        ensureColab(vend, v.vendedora_nombre || v.colaboradora_nombre, v.vendedora_alias || v.colaboradora_alias);
+        porColab[vend].vendido += Number(v.precio_mxn || 0);
+        // Comisión por venta solo cuando vendedor distinto del ejecutor
+        if (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) {
+          porColab[vend].comision += Number(v.comision_venta_mxn || 0);
+          porColab[vend].ventasHechas += 1;
+        }
       }
     });
     const colabsOrd = Object.values(porColab).sort((a,b) => (b.ventas + b.comision) - (a.ventas + a.comision));
@@ -813,9 +823,10 @@ const TopColabsTable = ({colabs, onColabClick}) => {
             <div style={{height:5,background:'var(--paper-sunk)',borderRadius:3,overflow:'hidden',marginBottom:2}}>
               <div style={{height:'100%',width:`${pct}%`,background:'var(--clay)',transition:'width .3s'}}/>
             </div>
-            <div style={{fontSize:10,color:'var(--ink-3)',display:'flex',gap:10}} className="num">
+            <div style={{fontSize:10,color:'var(--ink-3)',display:'flex',gap:10,flexWrap:'wrap'}} className="num">
               <span>Recibió ${Math.round(recibido).toLocaleString('es-MX')}</span>
-              {c.ventasHechas > 0 && <span style={{color:'var(--ink-blue)'}}>+ {c.ventasHechas} ventas a otras</span>}
+              <span>Vendió ${Math.round(c.vendido || 0).toLocaleString('es-MX')}</span>
+              {c.ventasHechas > 0 && <span style={{color:'var(--ink-blue)'}}>+ {c.ventasHechas} a otras</span>}
             </div>
           </div>
         );
@@ -1122,16 +1133,26 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
   const symOf = (m) => monedas[m]?.simbolo || '$';
   return (
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-      <div style={{display:'grid',gridTemplateColumns:'1.5fr 80px 1fr 1fr 1fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
-        <div>Cuenta</div><div>Mon</div><div className="num" style={{textAlign:'right'}}>Ingresos</div><div className="num" style={{textAlign:'right'}}>Comisiones</div><div className="num" style={{textAlign:'right'}}>Gastos</div><div className="num" style={{textAlign:'right'}}>Balance</div>
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
+        <div>Cuenta</div>
+        <div>Mon</div>
+        <div className="num" style={{textAlign:'right'}}>Ingresos</div>
+        <div className="num" style={{textAlign:'right'}}>Comisiones</div>
+        <div className="num" style={{textAlign:'right'}}>Gastos</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos. Asume que cada peso entra y sale por la cuenta donde se registró.">Balance teórico</div>
+        <div className="num" style={{textAlign:'right'}} title="Diferencia real al cierre del arqueo (sobrante / faltante). Captura escenarios como pago de comisiones en moneda distinta a la de la venta.">Ajuste arqueo</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance real = balance teórico + ajuste arqueo. Refleja el flujo de caja como realmente sucedió.">Balance real</div>
       </div>
       {cuentas.map(c => {
         const sym = symOf(c.moneda);
         const fmt = (n) => sym + Math.round(Math.abs(n)).toLocaleString('es-MX');
         const clickable = typeof onDrill === 'function';
         const cellClickStyle = (hasData) => clickable && hasData ? {cursor:'pointer',textDecoration:'underline dotted var(--ink-3)',textUnderlineOffset:2} : {};
+        const ajusteAbs = Math.abs(c.ajusteArqueo || 0);
+        const ajusteSigno = (c.ajusteArqueo || 0) > 0 ? 'sobró' : (c.ajusteArqueo || 0) < 0 ? 'faltó' : null;
+        const ajusteColor = ajusteAbs < 1 ? 'var(--ink-3)' : (c.ajusteArqueo > 0 ? 'var(--moss)' : '#b73f5e');
         return (
-          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.5fr 80px 1fr 1fr 1fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
+          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
             <div>
               <div style={{fontWeight:600,color:'var(--ink-0)'}}>{c.label}</div>
               <div style={{fontSize:10,color:'var(--ink-3)',textTransform:'capitalize'}}>{c.tipo}</div>
@@ -1140,7 +1161,16 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
             <div className="num" onClick={clickable && c.n_ventas > 0 ? ()=>onDrill(c, 'ingresos') : undefined} style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600,...cellClickStyle(c.n_ventas > 0)}} title={c.n_ventas > 0 ? `${c.n_ventas} ventas — click para ver detalle` : ''}>{c.n_ventas > 0 ? '+' + fmt(c.ingresos) : '—'}</div>
             <div className="num" style={{textAlign:'right',color:c.comisiones > 0 ? 'var(--clay)' : 'var(--ink-3)'}}>{c.comisiones > 0 ? '−' + fmt(c.comisiones) : '—'}</div>
             <div className="num" onClick={clickable && c.n_gastos > 0 ? ()=>onDrill(c, 'gastos') : undefined} style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)',...cellClickStyle(c.n_gastos > 0)}} title={c.n_gastos > 0 ? `${c.n_gastos} gastos — click para ver detalle` : ''}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
-            <div className="num" style={{textAlign:'right',fontWeight:700,color:c.balance >= 0 ? 'var(--moss)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
+            <div className="num" style={{textAlign:'right',fontWeight:600,color:c.balance >= 0 ? 'var(--ink-2)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
+            <div className="num" style={{textAlign:'right',color:ajusteColor}} title={c.n_arqueos > 0 ? `${c.n_arqueos} arqueo${c.n_arqueos>1?'s':''} con ajuste` : 'Sin arqueos cerrados aún'}>
+              {ajusteAbs < 1 ? '—' : (
+                <>
+                  {c.ajusteArqueo > 0 ? '+' : '−'}{fmt(c.ajusteArqueo)}
+                  <div style={{fontSize:9,color:'var(--ink-3)',marginTop:1,fontFamily:'var(--sans)',fontWeight:500}}>{ajusteSigno}</div>
+                </>
+              )}
+            </div>
+            <div className="num" style={{textAlign:'right',fontWeight:700,color:c.balanceReal >= 0 ? 'var(--moss)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13.5}}>{c.balanceReal >= 0 ? '' : '−'}{fmt(c.balanceReal)}</div>
           </div>
         );
       })}

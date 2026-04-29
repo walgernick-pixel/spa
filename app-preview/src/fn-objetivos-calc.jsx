@@ -111,14 +111,16 @@ const calcBonoIndividual = (obj, ventas, ventasHistoricas, colabs) => {
     const n = (ventasHistoricas || []).length;
     avgTicketSpa = n > 0 ? total / n : 0;
   }
-  // Agrupar ventas del periodo por colab (ejecutor) + comisiones para venta neta
+  // Agrupar por VENDEDORA (lo que cada terapeuta vendió, sin importar quién ejecutó).
+  // Si la venta no tiene vendedora_id (legacy), cae al ejecutor.
+  // 'comisiones' suma comisión ejecutada + comisión por venta (lo que paga el spa por esas ventas).
   const porColab = {};
   ventas.forEach(v => {
-    const id = v.colaboradora_id;
+    const id = v.vendedora_id || v.colaboradora_id;
     if (!id) return;
     if (!porColab[id]) porColab[id] = {ventas:0, comisiones:0, n:0};
     porColab[id].ventas += Number(v.precio_mxn || 0);
-    porColab[id].comisiones += Number(v.comision_mxn || 0);
+    porColab[id].comisiones += Number(v.comision_mxn || 0) + Number(v.comision_venta_mxn || 0);
     porColab[id].n += 1;
   });
   // Evaluar cada colab activa que haya tenido ventas
@@ -180,9 +182,12 @@ const calcBonoMonto = (obj, bases) => {
   return Math.max(0, bases.exceso) * pct; // default 'exceso'
 };
 
-// bono_encargada: por cada colaboradora que abrió ≥ N turnos, calcular
-// bono sobre las VENTAS TOTALES de esos turnos (todos los terapeutas que ejecutaron)
-const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
+// bono_encargada: por cada persona que abrió ≥ N turnos, calcular
+// bono sobre las VENTAS TOTALES de esos turnos (todos los terapeutas que ejecutaron).
+// El responsable (encargada_id) vive en perfiles, no en colaboradoras —
+// por eso recibimos perfiles para resolver el nombre. Caemos a colabs
+// como fallback por si en algún caso el id sí está ahí.
+const calcBonoEncargada = (obj, ventas, turnos, colabs, perfiles = []) => {
   // Agrupar turnos por encargada_id
   const porEnc = {};
   turnos.forEach(t => {
@@ -206,7 +211,8 @@ const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
   // Evaluar cada encargada
   const resultados = [];
   Object.entries(porEnc).forEach(([id, d]) => {
-    const colab = (colabs || []).find(c => c.id === id);
+    const perfil = (perfiles || []).find(p => p.id === id);
+    const colab  = (colabs   || []).find(c => c.id === id);
     const neta = d.ventas - d.comisiones;
 
     const okTurnos  = obj.cond_turnos_min  == null || d.nTurnos >= Number(obj.cond_turnos_min);
@@ -217,8 +223,9 @@ const calcBonoEncargada = (obj, ventas, turnos, colabs) => {
 
     resultados.push({
       colab_id: id,
-      nombre: colab ? colab.nombre + (colab.apellidos ? ' '+colab.apellidos : '') : 'Encargada desconocida',
-      alias: colab?.alias,
+      nombre: perfil?.nombre_display
+        || (colab ? colab.nombre + (colab.apellidos ? ' '+colab.apellidos : '') : 'Responsable desconocido'),
+      alias: perfil?.username || colab?.alias,
       nTurnos: d.nTurnos,
       ventas: d.ventas,
       neta,

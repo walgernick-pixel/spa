@@ -17,6 +17,7 @@ const ObjetivosFn = () => {
   const [ventasHist, setVH]      = React.useState([]);
   const [turnos, setTurnos]      = React.useState([]);
   const [colabs, setColabs]      = React.useState([]);
+  const [perfiles, setPerfiles]  = React.useState([]);
   const [loading, setLoading]    = React.useState(true);
   const [modal, setModal]        = React.useState(null);
 
@@ -48,11 +49,13 @@ const ObjetivosFn = () => {
     const yIni = `${ahora.getFullYear()}-01-01`;
     const yFin = `${ahora.getFullYear()}-12-31`;
 
-    const [vQ, vYQ, cQ, tQ] = await Promise.all([
-      sb.from('v_ventas').select('id,fecha,turno_id,precio_mxn,colaboradora_id,vendedora_id,comision_mxn,comision_venta_mxn').gte('fecha', yIni).lte('fecha', yFin),
-      sb.from('v_ventas').select('fecha,precio_mxn').gte('fecha', `${ahora.getFullYear()-1}-01-01`).lte('fecha', `${ahora.getFullYear()-1}-12-31`),
+    // Paginar v_ventas/turnos para evitar el cap server-side de 1000 filas.
+    const [vQ, vYQ, cQ, tQ, pQ] = await Promise.all([
+      window.fetchAll(() => sb.from('v_ventas').select('id,fecha,turno_id,precio_mxn,colaboradora_id,vendedora_id,comision_mxn,comision_venta_mxn').gte('fecha', yIni).lte('fecha', yFin)),
+      window.fetchAll(() => sb.from('v_ventas').select('fecha,precio_mxn').gte('fecha', `${ahora.getFullYear()-1}-01-01`).lte('fecha', `${ahora.getFullYear()-1}-12-31`)),
       sb.from('colaboradoras').select('*').eq('activo', true).order('nombre'),
-      sb.from('turnos').select('id,fecha,estado,encargada_id').gte('fecha', yIni).lte('fecha', yFin),
+      window.fetchAll(() => sb.from('turnos').select('id,fecha,estado,encargada_id').gte('fecha', yIni).lte('fecha', yFin)),
+      sb.from('perfiles').select('id, nombre_display, username, activo'),
     ]);
     setVentas(vQ.data || []);
     setVYoY(vYQ.data || []);
@@ -60,11 +63,12 @@ const ObjetivosFn = () => {
     // Ventas históricas 12 meses atrás (para promedio_spa)
     const dHist = new Date(ahora); dHist.setMonth(dHist.getMonth() - 12); dHist.setDate(1);
     const histIni = `${dHist.getFullYear()}-${String(dHist.getMonth()+1).padStart(2,'0')}-01`;
-    const {data: vH} = await sb.from('v_ventas').select('fecha,precio_mxn').gte('fecha', histIni);
-    setVH(vH || []);
+    const vH = await window.fetchAll(() => sb.from('v_ventas').select('fecha,precio_mxn').gte('fecha', histIni));
+    setVH(vH.data || []);
 
     setColabs(cQ.data || []);
     setTurnos(tQ.data || []);
+    setPerfiles(pQ.data || []);
     setLoading(false);
   }, [periodoTipo, periodoFecha]);
 
@@ -122,7 +126,7 @@ const ObjetivosFn = () => {
                   periodoTipo={periodoTipo}
                   periodoFecha={periodoFecha}
                   ventas={ventas} ventasYoY={ventasYoY} ventasHist={ventasHist}
-                  turnos={turnos} colabs={colabs}
+                  turnos={turnos} colabs={colabs} perfiles={perfiles}
                   onConfigurar={()=>configurar(tipo.id)}
                   onToggleActivo={()=>obj && toggleActivo(obj)}
                 />
@@ -149,7 +153,7 @@ const ObjetivosFn = () => {
 };
 
 // ─── Slot de objetivo (card dedicada por tipo) ───
-const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasYoY, ventasHist, turnos, colabs, onConfigurar, onToggleActivo}) => {
+const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasYoY, ventasHist, turnos, colabs, perfiles, onConfigurar, onToggleActivo}) => {
   const color = tipoInfo.color;
   const configurado = !!obj;
   const activo = obj?.activo;
@@ -177,7 +181,9 @@ const SlotObjetivo = ({tipoInfo, obj, periodoTipo, periodoFecha, ventas, ventasY
         ? ventasHist.filter(v => v.fecha >= restarMeses(r.desde, ventana) && v.fecha < r.desde) : [];
       resultado = calcBonoIndividual(obj, ventasPer, vH, colabs);
     } else if (obj.tipo === 'bono_encargada') {
-      resultado = calcBonoEncargada(obj, ventasPer, turnosPer, colabs);
+      // Pasamos perfiles para que el lookup del nombre del responsable
+      // funcione: encargada_id apunta a perfiles, no a colaboradoras.
+      resultado = calcBonoEncargada(obj, ventasPer, turnosPer, colabs, perfiles);
     }
   }
 
