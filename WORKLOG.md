@@ -12,6 +12,26 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-04-29] Login offline con credenciales hasheadas (en progreso, PR pendiente)
+
+- **Estado:** Implementado en rama `login-offline`. PR pendiente de abrir/mergear.
+- **Cambios:**
+  - `fn-auth.jsx`: nuevos helpers `cacheAuthOffline` / `verifyOfflineAuth` / `loginWithFallback` con PBKDF2-SHA256 (Web Crypto API).
+  - Tras login online exitoso → cachea `{username, perfil, rolData, salt, hash, cachedAt}` en IDB con TTL 14 días.
+  - Login offline: valida password contra hash local. Si match → setea `window.__auth.perfil` directamente.
+  - `logout`: ahora confirma con `window.confirm`, con warning extra si offline ("no podrás reentrar offline si cierras sesión").
+  - `offline.jsx`: expone `idbPut` e `idbGet` al `window` (los necesita fn-auth).
+- **Decisiones:**
+  - **PBKDF2 100k iteraciones, SHA-256**: estándar industrial, lento contra brute force.
+  - **TTL 14 días**: si la encargada no ha entrado online en 2 semanas, fuerza re-login.
+  - **No auto-restore al abrir**: el usuario siempre teclea password (incluso offline). El cache solo verifica, no auto-loguea sin contraseña.
+  - **Si server dice "credentials inválidas" online → NO intenta offline**. Evita confusión cuando la contraseña realmente está mal.
+- **Acción pendiente del owner:**
+  - En Supabase Dashboard → Auth → Settings → JWT expiry: cambiar de 3600s (1h) a 604800s (7 días). Esto extiende la duración del access token para que la sesión real persista más sin necesidad de refresh.
+- **Próximo paso:** Probar en preview y mergear.
+
+---
+
 ## [2026-04-29] UX-pulido (PR #72)
 
 - **Estado:** En rama `pulido-carga`, PR #72. Listo para merge.

@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.2.2';  // Fix: turnos encolados offline ahora aparecen en la lista
+const VERSION    = 'v1.3.0';  // Login offline con credenciales hasheadas (PBKDF2) + logout con confirm
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;
