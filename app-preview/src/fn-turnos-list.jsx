@@ -223,6 +223,39 @@ const TurnosListFn = () => {
     }
     setTurnos(data || []);
     setLoading(false);
+
+    // Snapshot proactivo del turno abierto: si la encargada corta la red
+    // sin haber entrado al PV todavía, igual podrá abrirlo offline (lee
+    // este snapshot). Sólo hay 1 abierto a la vez, costo trivial.
+    const abierto = (data || []).find(t => t.estado === 'abierto');
+    if (abierto && navigator.onLine) {
+      // Fire-and-forget: no bloquea el render
+      (async () => {
+        try {
+          const [tFull, vFull, tcFull, arFull] = await Promise.all([
+            sb.from('turnos').select('*').eq('id', abierto.id).single(),
+            sb.from('v_ventas').select('*').eq('turno_id', abierto.id).order('creado',{ascending:false}),
+            sb.from('turno_colaboradoras').select('*').eq('turno_id', abierto.id),
+            sb.from('arqueos').select('*').eq('turno_id', abierto.id),
+          ]);
+          if (tFull.error || !tFull.data) return;
+          const ventas = vFull.data || [];
+          const ventaIds = ventas.map(x => x.id);
+          let pagos = [];
+          if (ventaIds.length > 0) {
+            const pp = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+            pagos = pp.data || [];
+          }
+          await window.snapshotTurno(abierto.id, {
+            turno: tFull.data,
+            ventas,
+            ventaPagos: pagos,
+            turnoColabs: tcFull.data || [],
+            arqueos: arFull.data || [],
+          });
+        } catch (_) { /* offline o error: skip silently */ }
+      })();
+    }
   }, []);
 
   React.useEffect(() => { cargar(); }, [cargar]);
