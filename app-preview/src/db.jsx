@@ -92,7 +92,24 @@ const useDelayedLoading = (loading, ms = 250) => {
 };
 
 // Recarga forzada (limpia estado en memoria). Botón ↻ del header lo usa.
-const reloadApp = () => window.location.reload();
+//
+// Si hay operaciones pendientes en la cola offline, pregunta antes —
+// recargar NO las pierde (viven en IndexedDB), pero sí pierde lo que
+// el usuario esté tipeando en una forma sin guardar. El confirm
+// previene clicks accidentales en pleno trabajo.
+const reloadApp = async () => {
+  let pending = 0;
+  try { if (window.getPendingCount) pending = await window.getPendingCount(); } catch (_) {}
+  if (pending > 0) {
+    const ok = window.confirm(
+      `Hay ${pending} captura${pending===1?'':'s'} sin sincronizar.\n\n` +
+      `Las capturas NO se pierden al recargar (siguen en cola y se subirán cuando vuelvas a tener internet), pero si tienes un formulario abierto sin guardar, perderás lo tipeado.\n\n` +
+      `¿Recargar de todos modos?`
+    );
+    if (!ok) return;
+  }
+  window.location.reload();
+};
 
 // Auto-recarga cuando el tab vuelve de background después de >5 min.
 // Cubre el caso "promesas dormidas" que deja la pantalla en Cargando para siempre.

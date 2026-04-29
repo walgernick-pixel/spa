@@ -12,22 +12,37 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
-## [2026-04-29] Pulido de carga (PR draft)
+## [2026-04-29] UX-pulido (PR #72)
 
-- **Estado:** Listo en rama `pulido-carga`, PR draft pendiente de revisión.
+- **Estado:** En rama `pulido-carga`, PR #72. Listo para merge.
 - **Cambios entregados:**
   - `useDelayedLoading(loading, 250)` en `db.jsx` — el spinner sólo aparece si la query tarda > 250 ms.
   - Listener `visibilitychange` en `db.jsx` — auto-reload si el tab estuvo en background > 5 min.
-  - Botón ↻ "Recargar" en footer del sidebar (junto a logout). Ícono nuevo `refresh` en `primitives.jsx`.
+  - Botón ↻ "Recargar" en footer del sidebar (junto a logout). Confirma antes si hay capturas pendientes en cola.
+  - Ícono `refresh` en `primitives.jsx`.
   - `useDelayedLoading` aplicado en: `fn-dashboard`, `fn-turnos-list`, `fn-gastos-list`, `fn-objetivos`.
+  - **Sidebar colapsable** — toggle manual + auto-colapso si viewport < 1100px. Modo colapsado: sólo iconos, ~60px. Preferencia persiste en `localStorage`.
+  - WORKLOG.md + sección "Para Claude" en CLAUDE.md.
 - **Decisiones:**
-  - **No timeout en fetches** — sería invasivo (tocar cada query). El botón Recargar + auto-reload por visibilidad cubren el caso del "se quedó cargando" sin tocar lógica de cada pantalla.
-  - **Fade transition diferido** — tocaba `pages-wrappers` o `AppShell` con keys o CSS por pantalla; riesgo de romper preservación de estado en sub-rutas (turnos→pv→arqueo). Se evalúa en siguiente iteración.
-- **Próximo paso (siguiente sesión):**
-  1. Observar en uso real si aún se siente lento.
-  2. Si sí: implementar SWR (stale-while-revalidate) sólo para Turnos y Dashboard (cache `window.__cache[ruta]`, mostrar data vieja inmediato + refetch en background, invalidar al mutar).
-  3. Considerar fade transition entre módulos (turnos↔gastos↔dashboard) usando key en AppShell.
+  - **Confirm en refresh sólo si hay queue** — no estorba en uso normal, protege contra clicks accidentales en pleno trabajo.
+  - **Sidebar default según viewport** si el usuario nunca eligió. Si ya eligió, su preferencia gana.
+  - **Fade transition diferido** — riesgo de romper preservación de estado en sub-rutas. Próxima iteración.
+- **Próximo paso:**
+  1. Probar en uso real con la encargada (tablet).
+  2. Si aún se siente lento en alguna pantalla: SWR (stale-while-revalidate) sólo para Turnos y Dashboard.
+  3. Lock de 1 perfil por turno con admin override (Fase 2 que dejamos pendiente).
 - **Bloqueos:** Ninguno.
+
+## [2026-04-29] Offline completo (PR #73 — mergeado)
+
+- **Estado:** Mergeado a main (commit `719de17`).
+- **Decisiones clave:**
+  - Snapshot del turno (turno + ventas + venta_pagos + turno_colaboradoras + arqueos) en IDB. Lectura cuando offline.
+  - Helpers nuevos en `offline.jsx`: `sbDelete`, `sbUpsert`, `snapshotTurno`, `leerSnapshotTurno`, `cacheTurnosList`, `leerTurnosListCache`.
+  - Optimistic update + persist al snapshot tras togglePago/guardarFirma/borrarVenta para que UI offline se sienta en tiempo real Y arqueo lea estado fresco.
+  - Migración 27: unique partial index `turnos(estado) where estado='abierto'`.
+  - Ref-lock síncrono en abrirTurno previene race condition de clicks rápidos.
+- **Pendiente:** Pruebas reales con la encargada offline.
 
 ## [2026-04-29] Distinguir ejecutado vs vendido
 
