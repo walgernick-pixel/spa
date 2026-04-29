@@ -24,36 +24,85 @@ const ArqueoFn = () => {
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
     setLoading(true);
-    const [t, v, cu, mo, tc, ar] = await Promise.all([
-      sb.from('turnos').select('*').eq('id', turnoId).single(),
-      sb.from('v_ventas').select('*').eq('turno_id', turnoId),
-      sb.from('cuentas').select('*'),
-      sb.from('monedas').select('*'),
-      sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
-      sb.from('arqueos').select('*').eq('turno_id', turnoId),
+
+    // Catálogos: usan IDB como fallback offline
+    const [cu, mo] = await Promise.all([
+      consultarCatalogo('cuentas'),
+      consultarCatalogo('monedas'),
     ]);
-    if (t.error) { notify('No se encontró el turno: '+t.error.message, 'err'); setLoading(false); return; }
 
-    // Cargar venta_pagos asociados a estas ventas (pueden ser splits)
-    const ventaIds = (v.data||[]).map(x => x.id);
-    let pagos = [];
-    if (ventaIds.length > 0) {
-      const pp = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
-      pagos = pp.data || [];
+    // Datos del turno: intentar Supabase, caer a snapshot
+    let turnoData = null;
+    let ventasData = [];
+    let pagosData = [];
+    let turnoColabsData = [];
+    let arqueosData = [];
+    let dataFromSnapshot = false;
+    try {
+      const [t, v, tc, ar] = await Promise.all([
+        sb.from('turnos').select('*').eq('id', turnoId).single(),
+        sb.from('v_ventas').select('*').eq('turno_id', turnoId),
+        sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
+        sb.from('arqueos').select('*').eq('turno_id', turnoId),
+      ]);
+      if (!t.error && t.data) {
+        turnoData       = t.data;
+        ventasData      = v.data || [];
+        turnoColabsData = tc.data || [];
+        arqueosData     = ar.data || [];
+        const ventaIds = ventasData.map(x => x.id);
+        if (ventaIds.length > 0) {
+          const pp = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+          pagosData = pp.data || [];
+        }
+      }
+    } catch (_) { /* offline / network */ }
+
+    // Fallback: snapshot
+    if (!turnoData) {
+      const snap = await window.leerSnapshotTurno(turnoId);
+      if (snap && snap.turno) {
+        turnoData       = snap.turno;
+        ventasData      = snap.ventas || [];
+        pagosData       = snap.ventaPagos || [];
+        turnoColabsData = snap.turnoColabs || [];
+        arqueosData     = snap.arqueos || [];
+        dataFromSnapshot = true;
+      }
     }
-    setVentaPagos(pagos);
 
-    setTurno(t.data);
-    setVentas(v.data || []);
+    if (!turnoData) {
+      if (!navigator.onLine) {
+        notify('Sin conexión y este turno no está cacheado en este dispositivo. Conéctate y refresca para hacer arqueo.', 'warn');
+      } else {
+        notify('No se encontró el turno', 'err');
+      }
+      setLoading(false); return;
+    }
+
+    // Snapshot al IDB para próximas reaperturas offline (sólo si vino de server)
+    if (!dataFromSnapshot && navigator.onLine) {
+      window.snapshotTurno(turnoId, {
+        turno: turnoData,
+        ventas: ventasData,
+        ventaPagos: pagosData,
+        turnoColabs: turnoColabsData,
+        arqueos: arqueosData,
+      });
+    }
+
+    setTurno(turnoData);
+    setVentas(ventasData);
+    setVentaPagos(pagosData);
     setCuentas(cu.data || []);
     const monMap = {}; (mo.data||[]).forEach(m => monMap[m.codigo] = m);
     setMonedas(monMap);
-    setTurnoCol(tc.data || []);
-    setArqueos(ar.data || []);
+    setTurnoCol(turnoColabsData);
+    setArqueos(arqueosData);
     // Pre-llenar reportados y notas con lo existente (ahora por cuenta_id)
     const pre = {};
     let notaExistente = '';
-    (ar.data||[]).forEach(a => {
+    arqueosData.forEach(a => {
       if (a.cuenta_id && a.neto_reportado !== null && a.neto_reportado !== undefined) {
         pre[a.cuenta_id] = String(a.neto_reportado);
       }
@@ -185,7 +234,7 @@ const ArqueoFn = () => {
         notas: notasV.trim() || null,
       };
     });
-    const {error} = await sb.from('arqueos').upsert(filas, {onConflict: 'turno_id,cuenta_id'});
+    const {error} = await window.sbUpsert('arqueos', filas, {onConflict: 'turno_id,cuenta_id'});
     if (error) { setAutoState('idle'); return {ok:false, error}; }
     setAutoState('guardado');
     setTimeout(()=>setAutoState('idle'), 1500);
@@ -213,9 +262,9 @@ const ArqueoFn = () => {
     const pass = window.prompt('⚠️ ELIMINAR ARQUEO\n\nEsto borra todas las filas de arqueo de este turno (todos los montos reportados). El turno queda sin arqueo.\n\nEscribe ELIMINAR para confirmar:');
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
-    const {error} = await sb.from('arqueos').delete().eq('turno_id', turnoId);
+    const {error, fromQueue} = await window.sbDelete('arqueos', {turno_id: turnoId});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Arqueo eliminado');
+    notify(fromQueue ? 'Arqueo eliminado (offline · se sincroniza al volver)' : 'Arqueo eliminado');
     setReportados({});
     cargar();
   };
@@ -225,9 +274,9 @@ const ArqueoFn = () => {
     const pass = window.prompt(`⚠️ ELIMINAR TURNO COMPLETO\n\nEsto BORRA PERMANENTEMENTE:\n  · El turno\n  · ${ventas.length} ventas\n  · Todos los arqueos y firmas\n\nNo se puede recuperar.\n\nEscribe ELIMINAR para confirmar:`);
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
-    const {error} = await sb.from('turnos').delete().eq('id', turnoId);
+    const {error, fromQueue} = await window.sbDelete('turnos', {id: turnoId});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Turno eliminado');
+    notify(fromQueue ? 'Turno eliminado (offline · se sincroniza al volver)' : 'Turno eliminado');
     navigate('turnos');
   };
 
@@ -237,12 +286,12 @@ const ArqueoFn = () => {
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
     const nuevaCuenta = (Number(turno.reaperturas)||0) + 1;
-    const {error} = await sb.from('turnos').update({
+    const {error, fromQueue} = await window.sbUpdate('turnos', {
       estado:'abierto', hora_fin:null, cerrado:null,
       reaperturas: nuevaCuenta, reabierto_at: new Date().toISOString(),
-    }).eq('id', turnoId);
+    }, {id: turnoId});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Turno reabierto');
+    notify(fromQueue ? 'Turno reabierto (offline · se sincroniza al volver)' : 'Turno reabierto');
     cargar();
   };
 
@@ -278,6 +327,10 @@ const ArqueoFn = () => {
     const sinFirma = turnoColabs.filter(tc => tc.comision_pagada_at && !tc.firma_data_url);
     let msg = '¿Cerrar el turno DEFINITIVAMENTE?\n\nDespués de cerrar, este turno DESAPARECE de tu pantalla y no podrás volver a imprimir el recibo (solo un administrador podrá).\n\n⚠️ Asegúrate de haber imprimido el recibo antes de continuar.';
     if (sinFirma.length > 0) msg += `\n\n(Hay ${sinFirma.length} ${sinFirma.length===1?'persona':'personas'} pagada${sinFirma.length===1?'':'s'} sin firmar — podrá firmar después)`;
+    // Aviso extra si offline: se aplicará al sincronizar
+    if (!navigator.onLine) {
+      msg += '\n\n⚠️ Estás SIN CONEXIÓN. El turno se cerrará localmente y se sincronizará al volver internet. Si hay errores de sync, podría requerir intervención del admin.';
+    }
     if (!confirmar(msg)) return;
     setCerrando(true);
     // Cancelar cualquier autosave pendiente y guardar sincrónicamente
@@ -286,10 +339,10 @@ const ArqueoFn = () => {
     if (!saveResult.ok) { setCerrando(false); return notify('Error guardando arqueo antes de cerrar: '+saveResult.error.message,'err'); }
     const ahora = new Date();
     const horaFin = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
-    const {error} = await sb.from('turnos').update({estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}).eq('id', turnoId);
+    const {error, fromQueue} = await window.sbUpdate('turnos', {estado: 'cerrado', hora_fin: horaFin, cerrado: ahora.toISOString()}, {id: turnoId});
     setCerrando(false);
     if (error) return notify('Error al cerrar: '+error.message, 'err');
-    notify('Turno cerrado ✓');
+    notify(fromQueue ? 'Turno cerrado (offline · se sincroniza al volver) ✓' : 'Turno cerrado ✓');
     navigate('turnos');
   };
 
