@@ -179,6 +179,24 @@ const TurnosListFn = () => {
   const cargar = React.useCallback(async () => {
     setLoading(true);
 
+    // Helper: mezcla turnos encolados (recién creados offline) con la
+    // lista. Sin esto, un turno que la encargada abre offline no aparece
+    // en su propia lista hasta que sincroniza.
+    const mergeQueuedTurnos = async (list) => {
+      let queued = [];
+      try {
+        if (typeof window.findQueuedAll === 'function') {
+          queued = await window.findQueuedAll('turnos', () => true);
+        }
+      } catch (_) {}
+      if (queued.length === 0) return list;
+      const ids = new Set((list || []).map(t => t.id));
+      const extras = queued
+        .filter(t => !ids.has(t.id))
+        .map(t => ({...t, _pending: true, n_servicios: 0, total_mxn: 0, arqueoStatus: 'pendiente', arqueoDifMxn: 0}));
+      return [...extras, ...(list || [])];
+    };
+
     // Helper: si offline o si la query falla por red, cae a cache de IDB.
     // Defensivo: si window.leerTurnosListCache no existe (SW sirviendo
     // offline.jsx viejo en cache stale), no crasheamos — devolvemos []
@@ -190,7 +208,8 @@ const TurnosListFn = () => {
           cached = await window.leerTurnosListCache();
         }
       } catch (_) { /* IDB roto, seguir con [] */ }
-      setTurnos(cached);
+      const merged = await mergeQueuedTurnos(cached);
+      setTurnos(merged);
       setLoading(false);
     };
 
@@ -257,11 +276,16 @@ const TurnosListFn = () => {
         }
       });
     }
-    setTurnos(data || []);
+    // Mezcla turnos encolados (offline pendientes de sync) — así la
+    // encargada los ve aparecer aunque la cola no haya drenado todavía.
+    const mergedOnline = await mergeQueuedTurnos(data || []);
+    setTurnos(mergedOnline);
     setLoading(false);
 
     // Cachear lista enriquecida para vista offline. Próxima vez que se
     // abra el módulo sin red, mostramos esto en vez de error vacío.
+    // (Sólo cacheamos los del server, no los _pending — ésos se mergean
+    // en runtime desde la cola.)
     if (window.cacheTurnosList) window.cacheTurnosList(data || []);
 
     // Snapshot proactivo del turno abierto: si la encargada corta la red
