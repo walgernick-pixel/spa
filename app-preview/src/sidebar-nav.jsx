@@ -81,18 +81,34 @@ const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
             </div>
           )}
         </div>
-        {/* Botón colapsar/expandir */}
-        <button
-          onClick={(e)=>{ e.stopPropagation(); onToggleCollapsed(); }}
-          title={collapsed?'Expandir menú':'Colapsar menú'}
-          style={{position:'absolute',right:-12,top:24,width:24,height:24,borderRadius:999,background:'var(--paper-raised)',border:'1px solid var(--line-1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-2)',padding:0,boxShadow:'0 1px 3px rgba(0,0,0,.06)',zIndex:2}}
-        >
-          <Icon name={collapsed?'chev-right':'arrow-left'} size={12}/>
-        </button>
+        {/* Botón colapsar/expandir — pegado al borde derecho del sidebar.
+            Va flotando hacia afuera (right:-11) sólo cuando NO está colapsado,
+            así no se sale del aside cuando el aside es de 60px (sería visible
+            encima del contenido). Cuando colapsado, va al centro debajo del
+            logo dentro del padding. */}
+        {!collapsed && (
+          <button
+            onClick={(e)=>{ e.stopPropagation(); onToggleCollapsed(); }}
+            title="Colapsar menú"
+            style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',width:26,height:26,borderRadius:999,background:'var(--paper-raised)',border:'1px solid var(--line-1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--ink-2)',padding:0,boxShadow:'0 1px 3px rgba(0,0,0,.06)',zIndex:2}}
+          >
+            <Icon name="arrow-left" size={13}/>
+          </button>
+        )}
       </div>
 
       {/* Nav */}
       <nav style={{flex:1,padding:collapsed?'12px 6px':'12px 8px',overflowY:'auto'}}>
+        {/* Botón expandir visible solo en colapsado */}
+        {collapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title="Expandir menú"
+            style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:'10px 0',marginBottom:8,background:'transparent',border:'1px dashed var(--line-1)',borderRadius:8,cursor:'pointer',color:'var(--ink-3)'}}
+          >
+            <Icon name="chev-right" size={14}/>
+          </button>
+        )}
         {items.map(it=>(
           <NavItem key={it.id} {...it} active={active===it.id} collapsed={collapsed} onClick={()=>navigate(it.path)}/>
         ))}
