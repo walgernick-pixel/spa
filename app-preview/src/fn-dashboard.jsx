@@ -234,7 +234,7 @@ const DashboardFn = () => {
     const cuentaMap = {};
     cuentas.forEach(c => cuentaMap[c.id] = {
       id: c.id, label: c.label, tipo: c.tipo, moneda: c.moneda,
-      ingresos: 0, comisiones: 0, gastos: 0, n_ventas: 0, n_gastos: 0,
+      ingresos: 0, comisiones: 0, gastos: 0, ajusteArqueo: 0, n_ventas: 0, n_gastos: 0, n_arqueos: 0,
     });
     ventas.forEach(v => {
       if (!cuentaMap[v.cuenta_id]) return;
@@ -252,9 +252,25 @@ const DashboardFn = () => {
       cuentaMap[g.cuenta_id].gastos += Number(g.monto || 0);
       cuentaMap[g.cuenta_id].n_gastos += 1;
     });
+    // Ajuste arqueo: incorporar la realidad operativa (sobrantes/faltantes)
+    // por cuenta. Esto captura escenarios como "comisión USD pagada en MXN
+    // porque no había efectivo USD" — refleja en flujo de caja la realidad.
+    // Solo arqueos con neto_reportado != null contribuyen (los parciales se
+    // ignoran porque no hay dato confiable aún).
+    arqueos.forEach(a => {
+      if (a.diferencia === null || a.diferencia === undefined) return;
+      if (a.neto_reportado === null || a.neto_reportado === undefined) return;
+      if (!cuentaMap[a.cuenta_id]) return;
+      cuentaMap[a.cuenta_id].ajusteArqueo += Number(a.diferencia);
+      cuentaMap[a.cuenta_id].n_arqueos += 1;
+    });
     const flujoPorCuenta = Object.values(cuentaMap)
-      .map(c => ({...c, balance: c.ingresos - c.comisiones - c.gastos}))
-      .filter(c => c.ingresos > 0 || c.gastos > 0)
+      .map(c => ({
+        ...c,
+        balance: c.ingresos - c.comisiones - c.gastos,
+        balanceReal: c.ingresos - c.comisiones - c.gastos + c.ajusteArqueo,
+      }))
+      .filter(c => c.ingresos > 0 || c.gastos > 0 || c.ajusteArqueo !== 0)
       .sort((a,b) => {
         // Efectivo MXN primero, luego tipo alfabético, luego moneda
         if (a.tipo === 'efectivo' && b.tipo !== 'efectivo') return -1;
@@ -1122,16 +1138,26 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
   const symOf = (m) => monedas[m]?.simbolo || '$';
   return (
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-      <div style={{display:'grid',gridTemplateColumns:'1.5fr 80px 1fr 1fr 1fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
-        <div>Cuenta</div><div>Mon</div><div className="num" style={{textAlign:'right'}}>Ingresos</div><div className="num" style={{textAlign:'right'}}>Comisiones</div><div className="num" style={{textAlign:'right'}}>Gastos</div><div className="num" style={{textAlign:'right'}}>Balance</div>
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
+        <div>Cuenta</div>
+        <div>Mon</div>
+        <div className="num" style={{textAlign:'right'}}>Ingresos</div>
+        <div className="num" style={{textAlign:'right'}}>Comisiones</div>
+        <div className="num" style={{textAlign:'right'}}>Gastos</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos. Asume que cada peso entra y sale por la cuenta donde se registró.">Balance teórico</div>
+        <div className="num" style={{textAlign:'right'}} title="Diferencia real al cierre del arqueo (sobrante / faltante). Captura escenarios como pago de comisiones en moneda distinta a la de la venta.">Ajuste arqueo</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance real = balance teórico + ajuste arqueo. Refleja el flujo de caja como realmente sucedió.">Balance real</div>
       </div>
       {cuentas.map(c => {
         const sym = symOf(c.moneda);
         const fmt = (n) => sym + Math.round(Math.abs(n)).toLocaleString('es-MX');
         const clickable = typeof onDrill === 'function';
         const cellClickStyle = (hasData) => clickable && hasData ? {cursor:'pointer',textDecoration:'underline dotted var(--ink-3)',textUnderlineOffset:2} : {};
+        const ajusteAbs = Math.abs(c.ajusteArqueo || 0);
+        const ajusteSigno = (c.ajusteArqueo || 0) > 0 ? 'sobró' : (c.ajusteArqueo || 0) < 0 ? 'faltó' : null;
+        const ajusteColor = ajusteAbs < 1 ? 'var(--ink-3)' : (c.ajusteArqueo > 0 ? 'var(--moss)' : '#b73f5e');
         return (
-          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.5fr 80px 1fr 1fr 1fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
+          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
             <div>
               <div style={{fontWeight:600,color:'var(--ink-0)'}}>{c.label}</div>
               <div style={{fontSize:10,color:'var(--ink-3)',textTransform:'capitalize'}}>{c.tipo}</div>
@@ -1140,7 +1166,16 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
             <div className="num" onClick={clickable && c.n_ventas > 0 ? ()=>onDrill(c, 'ingresos') : undefined} style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600,...cellClickStyle(c.n_ventas > 0)}} title={c.n_ventas > 0 ? `${c.n_ventas} ventas — click para ver detalle` : ''}>{c.n_ventas > 0 ? '+' + fmt(c.ingresos) : '—'}</div>
             <div className="num" style={{textAlign:'right',color:c.comisiones > 0 ? 'var(--clay)' : 'var(--ink-3)'}}>{c.comisiones > 0 ? '−' + fmt(c.comisiones) : '—'}</div>
             <div className="num" onClick={clickable && c.n_gastos > 0 ? ()=>onDrill(c, 'gastos') : undefined} style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)',...cellClickStyle(c.n_gastos > 0)}} title={c.n_gastos > 0 ? `${c.n_gastos} gastos — click para ver detalle` : ''}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
-            <div className="num" style={{textAlign:'right',fontWeight:700,color:c.balance >= 0 ? 'var(--moss)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
+            <div className="num" style={{textAlign:'right',fontWeight:600,color:c.balance >= 0 ? 'var(--ink-2)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
+            <div className="num" style={{textAlign:'right',color:ajusteColor}} title={c.n_arqueos > 0 ? `${c.n_arqueos} arqueo${c.n_arqueos>1?'s':''} con ajuste` : 'Sin arqueos cerrados aún'}>
+              {ajusteAbs < 1 ? '—' : (
+                <>
+                  {c.ajusteArqueo > 0 ? '+' : '−'}{fmt(c.ajusteArqueo)}
+                  <div style={{fontSize:9,color:'var(--ink-3)',marginTop:1,fontFamily:'var(--sans)',fontWeight:500}}>{ajusteSigno}</div>
+                </>
+              )}
+            </div>
+            <div className="num" style={{textAlign:'right',fontWeight:700,color:c.balanceReal >= 0 ? 'var(--moss)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13.5}}>{c.balanceReal >= 0 ? '' : '−'}{fmt(c.balanceReal)}</div>
           </div>
         );
       })}
