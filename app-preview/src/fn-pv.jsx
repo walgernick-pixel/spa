@@ -28,12 +28,7 @@ const PVTurnoFn = () => {
     if (!turnoId) { setLoading(false); return; }
     setLoading(true);
     // Catálogos: usar consultarCatalogo (cae a IndexedDB si no hay net).
-    // El turno, ventas y turno_colaboradoras siguen yendo directo (datos
-    // específicos del turno; offline para Fase 3).
-    const [t, v, tc, s, ca, co, cu, mo, pf] = await Promise.all([
-      sb.from('turnos').select('*').eq('id', turnoId).single(),
-      sb.from('v_ventas').select('*').eq('turno_id', turnoId).order('creado',{ascending:false}),
-      sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
+    const [s, ca, co, cu, mo, pf] = await Promise.all([
       consultarCatalogo('servicios'),
       consultarCatalogo('canales_venta'),
       consultarCatalogo('colaboradoras'),
@@ -41,24 +36,74 @@ const PVTurnoFn = () => {
       consultarCatalogo('monedas'),
       consultarCatalogo('perfiles'),
     ]);
-    let turnoData = t.data;
-    if (t.error || !turnoData) {
-      // Fallback: el turno puede estar solo en la cola offline (recién
-      // abierto sin internet). Lo buscamos ahí para no crashear el PV.
-      turnoData = await window.findQueuedById('turnos', turnoId);
-      if (!turnoData) {
-        notify('No se encontró el turno: '+(t.error?.message || 'no existe'), 'err');
-        setLoading(false); return;
+    const sList = s.data || [], coList = co.data || [], caList = ca.data || [], cuList = cu.data || [];
+
+    // Datos del turno: intentar Supabase, caer a snapshot, caer a cola.
+    let turnoData = null;
+    let ventasReales = [];
+    let turnoColabsData = [];
+    let pagosReales = [];
+    let dataFromSnapshot = false;
+    try {
+      const [t, v, tc] = await Promise.all([
+        sb.from('turnos').select('*').eq('id', turnoId).single(),
+        sb.from('v_ventas').select('*').eq('turno_id', turnoId).order('creado',{ascending:false}),
+        sb.from('turno_colaboradoras').select('*').eq('turno_id', turnoId),
+      ]);
+      if (!t.error && t.data) {
+        turnoData       = t.data;
+        ventasReales    = v.data || [];
+        turnoColabsData = tc.data || [];
+        const ventaIds = ventasReales.map(x => x.id);
+        if (ventaIds.length > 0) {
+          const {data: pagos} = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+          pagosReales = pagos || [];
+        }
+      }
+    } catch (_) { /* offline / network — fallback abajo */ }
+
+    // Fallback 1: snapshot guardado en IDB (visita previa online a este turno)
+    if (!turnoData) {
+      const snap = await window.leerSnapshotTurno(turnoId);
+      if (snap && snap.turno) {
+        turnoData       = snap.turno;
+        ventasReales    = snap.ventas || [];
+        turnoColabsData = snap.turnoColabs || [];
+        pagosReales     = snap.ventaPagos || [];
+        dataFromSnapshot = true;
       }
     }
+
+    // Fallback 2: cola offline (turno recién abierto sin internet)
+    if (!turnoData) {
+      turnoData = await window.findQueuedById('turnos', turnoId);
+    }
+
+    if (!turnoData) {
+      if (!navigator.onLine) {
+        notify('Sin conexión y este turno no está cacheado en este dispositivo. Conéctate y refresca para abrirlo.', 'warn');
+      } else {
+        notify('No se encontró el turno', 'err');
+      }
+      setLoading(false); return;
+    }
+
+    // Snapshot al IDB para próximas reaperturas offline (sólo si vino de server)
+    if (!dataFromSnapshot && navigator.onLine) {
+      window.snapshotTurno(turnoId, {
+        turno: turnoData,
+        ventas: ventasReales,
+        ventaPagos: pagosReales,
+        turnoColabs: turnoColabsData,
+      });
+    }
+
     setTurno(turnoData);
 
-    // Mezclar ventas reales (Supabase) con ventas encoladas (offline).
+    // Mezclar ventas reales (Supabase/snapshot) con ventas encoladas (offline).
     // Las encoladas no tienen los joins de v_ventas, así que las
     // enriquecemos cliente-side desde el cache de catálogos.
-    const ventasReales = v.data || [];
     const queuedVentas = await window.findQueuedAll('ventas', vv => vv.turno_id === turnoId);
-    const sList = s.data || [], coList = co.data || [], caList = ca.data || [], cuList = cu.data || [];
     const enrichedQueued = queuedVentas.map(qv => {
       const ser = sList.find(x => x.id === qv.servicio_id);
       const col = coList.find(x => x.id === qv.colaboradora_id);
@@ -86,13 +131,7 @@ const PVTurnoFn = () => {
     });
     setVentas([...ventasReales, ...enrichedQueued]);
 
-    // Cargar venta_pagos (splits) — reales + encolados
-    const ventaIds = ventasReales.map(x => x.id);
-    let pagosReales = [];
-    if (ventaIds.length > 0) {
-      const {data: pagos} = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
-      pagosReales = pagos || [];
-    }
+    // venta_pagos: reales (de server o snapshot) + encolados de la cola
     const queuedVentaIds = queuedVentas.map(x => x.id);
     const queuedPagos = await window.findQueuedAll('venta_pagos', vp => queuedVentaIds.includes(vp.venta_id));
     setVentaPagos([...pagosReales, ...queuedPagos]);
@@ -103,53 +142,94 @@ const PVTurnoFn = () => {
     setCuentas(cuList);
     const monMap = {}; (mo.data||[]).forEach(m => monMap[m.codigo] = m);
     setMonedas(monMap);
-    setTurnoCol(tc.data || []);
+    setTurnoCol(turnoColabsData);
     setPerfiles(pf.data || []);
     setLoading(false);
   }, [turnoId]);
 
   React.useEffect(()=>{ cargar(); }, [cargar]);
 
-  // Borrar venta
+  // Helper: actualiza state local + snapshot tras una mutación.
+  // Es la pieza clave para que offline se sienta en tiempo real:
+  // sbUpdate encola pero la UI debe reflejar el cambio YA, y arqueo
+  // (que lee snapshot al cargar) debe ver lo último también.
+  const persistTurnoCol = (nextTurnoCol) => {
+    setTurnoCol(nextTurnoCol);
+    if (window.snapshotTurno) window.snapshotTurno(turnoId, {turnoColabs: nextTurnoCol});
+  };
+  const persistVentas = (nextVentas) => {
+    setVentas(nextVentas);
+    if (window.snapshotTurno) window.snapshotTurno(turnoId, {ventas: nextVentas});
+  };
+
+  // Borrar venta (soft delete via flag eliminado)
   const borrarVenta = async (v) => {
     if (!confirmar(`¿Borrar el servicio de ${v.colaboradora_nombre} por $${Number(v.precio).toLocaleString('es-MX')}?`)) return;
-    const {error} = await sb.from('ventas').update({eliminado: new Date().toISOString()}).eq('id', v.id);
+    const {error, fromQueue} = await window.sbUpdate('ventas', {eliminado: new Date().toISOString()}, {id: v.id});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Servicio borrado');
-    cargar();
+    persistVentas(ventas.filter(x => x.id !== v.id));
+    notify(fromQueue ? 'Servicio borrado (offline · se sincroniza al volver)' : 'Servicio borrado');
   };
 
   // Marcar/desmarcar pago de comisión (sin firma — la firma es acción aparte)
   const togglePago = async (colabId) => {
     const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
+    const now = new Date().toISOString();
+    let res;
+    let nextCol = [...turnoColabs];
     if (existing && existing.comision_pagada_at) {
       // DESMARCAR: borra pago Y firma (tendrá que volver a firmar)
       if (existing.firma_data_url) {
         if (!confirmar('Al desmarcar el pago también se borrará la firma. ¿Continuar?')) return;
       }
-      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: null, firma_data_url: null, firmado_at: null}).eq('id', existing.id);
-      if (error) return notify('Error: '+error.message,'err');
+      res = await window.sbUpdate('turno_colaboradoras',
+        {comision_pagada_at: null, firma_data_url: null, firmado_at: null},
+        {id: existing.id});
+      if (!res.error) {
+        nextCol = nextCol.map(tc => tc.id === existing.id
+          ? {...tc, comision_pagada_at: null, firma_data_url: null, firmado_at: null}
+          : tc);
+      }
     } else if (existing) {
-      const {error} = await sb.from('turno_colaboradoras').update({comision_pagada_at: new Date().toISOString()}).eq('id', existing.id);
-      if (error) return notify('Error: '+error.message,'err');
+      res = await window.sbUpdate('turno_colaboradoras', {comision_pagada_at: now}, {id: existing.id});
+      if (!res.error) {
+        nextCol = nextCol.map(tc => tc.id === existing.id ? {...tc, comision_pagada_at: now} : tc);
+      }
     } else {
-      const {error} = await sb.from('turno_colaboradoras').insert({turno_id: turnoId, colaboradora_id: colabId, comision_pagada_at: new Date().toISOString()});
-      if (error) return notify('Error: '+error.message,'err');
+      // Nueva fila: usar UUID cliente para que el snapshot pueda
+      // referenciarlo y guardarFirma encuentre el existing aunque
+      // estemos offline (la fila aún no existe en server).
+      const newRow = {
+        id: window.genUUID(),
+        turno_id: turnoId,
+        colaboradora_id: colabId,
+        comision_pagada_at: now,
+        firma_data_url: null,
+        firmado_at: null,
+      };
+      res = await window.sbInsert('turno_colaboradoras', newRow);
+      if (!res.error) nextCol = [...nextCol, newRow];
     }
-    cargar();
+    if (res.error) return notify('Error: '+res.error.message,'err');
+    persistTurnoCol(nextCol);
+    if (res.fromQueue) notify('Pago registrado (offline · se sincroniza al volver)', 'warn');
   };
 
   // Guardar la firma digital de una colaboradora
   const guardarFirma = async (colabId, dataUrl) => {
     const existing = turnoColabs.find(tc => tc.colaboradora_id === colabId);
     if (!existing) return notify('Primero marca como pagado','err');
-    const {error} = await sb.from('turno_colaboradoras').update({
+    const fechaFirma = new Date().toISOString();
+    const {error, fromQueue} = await window.sbUpdate('turno_colaboradoras', {
       firma_data_url: dataUrl,
-      firmado_at: new Date().toISOString(),
-    }).eq('id', existing.id);
+      firmado_at: fechaFirma,
+    }, {id: existing.id});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Firma guardada ✓');
-    cargar();
+    const nextCol = turnoColabs.map(tc => tc.id === existing.id
+      ? {...tc, firma_data_url: dataUrl, firmado_at: fechaFirma}
+      : tc);
+    persistTurnoCol(nextCol);
+    notify(fromQueue ? 'Firma guardada (offline · se sincroniza al volver) ✓' : 'Firma guardada ✓');
   };
 
   // Ir al arqueo (NO cierra el turno, solo navega)
@@ -162,9 +242,9 @@ const PVTurnoFn = () => {
     if (!nuevoId || nuevoId === turno.encargada_id) return;
     const p = perfiles.find(x => x.id === nuevoId);
     if (!confirmar(`¿Cambiar encargado del turno a "${p?.nombre_display || '?'}"?`)) return;
-    const {error} = await sb.from('turnos').update({encargada_id: nuevoId}).eq('id', turnoId);
+    const {error, fromQueue} = await window.sbUpdate('turnos', {encargada_id: nuevoId}, {id: turnoId});
     if (error) { notify('Error: '+error.message, 'err'); return; }
-    notify('Encargado actualizado');
+    notify(fromQueue ? 'Encargado actualizado (offline · se sincroniza al volver)' : 'Encargado actualizado');
     cargar();
   };
 
@@ -174,12 +254,12 @@ const PVTurnoFn = () => {
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'REABRIR') { notify('Confirmación incorrecta','err'); return; }
     const nuevaCuenta = (Number(turno.reaperturas)||0) + 1;
-    const {error} = await sb.from('turnos').update({
+    const {error, fromQueue} = await window.sbUpdate('turnos', {
       estado:'abierto', hora_fin:null, cerrado:null,
       reaperturas: nuevaCuenta, reabierto_at: new Date().toISOString(),
-    }).eq('id', turnoId);
+    }, {id: turnoId});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Turno reabierto');
+    notify(fromQueue ? 'Turno reabierto (offline · se sincroniza al volver)' : 'Turno reabierto');
     cargar();
   };
 
@@ -195,9 +275,9 @@ const PVTurnoFn = () => {
     const pass = window.prompt(msg);
     if (pass === null) return;
     if (pass.trim().toUpperCase() !== 'ELIMINAR') { notify('Confirmación incorrecta','err'); return; }
-    const {error} = await sb.from('turnos').delete().eq('id', turnoId);
+    const {error, fromQueue} = await window.sbDelete('turnos', {id: turnoId});
     if (error) return notify('Error: '+error.message,'err');
-    notify('Turno eliminado permanentemente');
+    notify(fromQueue ? 'Turno eliminado (offline · se sincroniza al volver)' : 'Turno eliminado permanentemente');
     navigate('turnos');
   };
 

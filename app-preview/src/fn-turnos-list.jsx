@@ -142,21 +142,75 @@ const TurnosListFn = () => {
   const [loading, setLoading]     = React.useState(true);
   const showLoading               = useDelayedLoading(loading);
   const [abriendo, setAbriendo]   = React.useState(false);
+  const abriendoRef               = React.useRef(false);
   const [modalRetro, setModalR]   = React.useState(false);
   const [preset, setPreset]       = React.useState('semana');
   const [customDesde, setCustomD] = React.useState('');
   const [customHasta, setCustomH] = React.useState('');
   const [estadoF, setEstadoF]     = React.useState('todos'); // todos | abierto | cerrado
   const [search, setSearch]       = React.useState('');
+  const [pendingTurnoIds, setPendingIds] = React.useState(new Set());
+
+  // Refrescar set de turnos con operaciones pendientes en cola.
+  // Se usa para mostrar chip "⟳ sync pendiente" en la lista.
+  const refreshPending = React.useCallback(async () => {
+    if (!window.getPending) return;
+    const ops = await window.getPending();
+    const ids = new Set();
+    ops.forEach(op => {
+      // Update/delete directo a la tabla turnos
+      if (op.table === 'turnos') {
+        if (op.filter?.id) ids.add(op.filter.id);
+        if (op.payload?.id) ids.add(op.payload.id);
+      }
+      // Inserts/upserts/updates relacionados a un turno (ventas, arqueos, etc)
+      if (op.payload?.turno_id) ids.add(op.payload.turno_id);
+      if (op.filter?.turno_id) ids.add(op.filter.turno_id);
+    });
+    setPendingIds(ids);
+  }, []);
+
+  React.useEffect(() => {
+    refreshPending();
+    if (!window.onQueueChange) return;
+    return window.onQueueChange(refreshPending);
+  }, [refreshPending]);
 
   const cargar = React.useCallback(async () => {
     setLoading(true);
-    const [turnosQ, perfilesQ] = await Promise.all([
-      sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(500),
-      sb.from('perfiles').select('id, nombre_display, username'),
-    ]);
+
+    // Helper: si offline o si la query falla por red, cae a cache de IDB.
+    const fallbackToCache = async () => {
+      const cached = await window.leerTurnosListCache();
+      setTurnos(cached);
+      setLoading(false);
+    };
+
+    // Si offline desde el inicio, ni intentamos red.
+    if (!navigator.onLine) {
+      await fallbackToCache();
+      return;
+    }
+
+    let turnosQ, perfilesQ;
+    try {
+      [turnosQ, perfilesQ] = await Promise.all([
+        sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(500),
+        sb.from('perfiles').select('id, nombre_display, username'),
+      ]);
+    } catch (_) { return fallbackToCache(); }
+
     const { data, error } = turnosQ;
-    if (error) { notify('Error cargando turnos: '+error.message, 'err'); setLoading(false); return; }
+    if (error) {
+      // Si es error de red, cae a cache silenciosamente. Si es otro tipo
+      // (ej. permisos), mostramos toast.
+      if (/network|fetch|failed to fetch|abort|connection/i.test(error.message || '')) {
+        return fallbackToCache();
+      }
+      notify('Error cargando turnos: '+error.message, 'err');
+      setLoading(false);
+      return;
+    }
     const pm = {}; (perfilesQ.data || []).forEach(p => { pm[p.id] = p; });
     setPfMap(pm);
     // Enriquecer cada turno: si la vista no trajo nombres, usar lookup local
@@ -197,6 +251,43 @@ const TurnosListFn = () => {
     }
     setTurnos(data || []);
     setLoading(false);
+
+    // Cachear lista enriquecida para vista offline. Próxima vez que se
+    // abra el módulo sin red, mostramos esto en vez de error vacío.
+    if (window.cacheTurnosList) window.cacheTurnosList(data || []);
+
+    // Snapshot proactivo del turno abierto: si la encargada corta la red
+    // sin haber entrado al PV todavía, igual podrá abrirlo offline (lee
+    // este snapshot). Sólo hay 1 abierto a la vez, costo trivial.
+    const abierto = (data || []).find(t => t.estado === 'abierto');
+    if (abierto && navigator.onLine) {
+      // Fire-and-forget: no bloquea el render
+      (async () => {
+        try {
+          const [tFull, vFull, tcFull, arFull] = await Promise.all([
+            sb.from('turnos').select('*').eq('id', abierto.id).single(),
+            sb.from('v_ventas').select('*').eq('turno_id', abierto.id).order('creado',{ascending:false}),
+            sb.from('turno_colaboradoras').select('*').eq('turno_id', abierto.id),
+            sb.from('arqueos').select('*').eq('turno_id', abierto.id),
+          ]);
+          if (tFull.error || !tFull.data) return;
+          const ventas = vFull.data || [];
+          const ventaIds = ventas.map(x => x.id);
+          let pagos = [];
+          if (ventaIds.length > 0) {
+            const pp = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
+            pagos = pp.data || [];
+          }
+          await window.snapshotTurno(abierto.id, {
+            turno: tFull.data,
+            ventas,
+            ventaPagos: pagos,
+            turnoColabs: tcFull.data || [],
+            arqueos: arFull.data || [],
+          });
+        } catch (_) { /* offline o error: skip silently */ }
+      })();
+    }
   }, []);
 
   React.useEffect(() => { cargar(); }, [cargar]);
@@ -228,38 +319,52 @@ const TurnosListFn = () => {
   const hayFiltros = preset !== 'semana' || estadoF !== 'todos' || search;
 
   const abrirTurno = async () => {
-    if (abriendo) return;
-    // Validar: no puede haber otro turno abierto
-    const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').limit(1);
-    if (abiertos && abiertos.length > 0) {
-      notify(`Ya hay un turno abierto (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de abrir otro.`, 'warn');
-      return;
-    }
-
+    // Lock síncrono con ref: bloquea clicks rápidos antes de que el state
+    // alcance a propagarse. Sin esto, varios clicks rápidos pasan el guard
+    // y llegan al insert en paralelo (race condition que generaba turnos
+    // duplicados). El índice único parcial server-side (mig 27) es la red
+    // de seguridad si esto fallara.
+    if (abriendoRef.current) return;
+    abriendoRef.current = true;
     setAbriendo(true);
-    const { data: user } = navigator.onLine ? await sb.auth.getUser() : {data:{user:null}};
-    const ahora = new Date();
-    const hoy   = localDateISO(ahora);
-    const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
-    // Si offline, usar el perfil cacheado de window.__auth (mig fn-auth)
-    const uid   = user?.user?.id || window.__auth?.perfil?.id || null;
+    try {
+      // Validar: no puede haber otro turno abierto. Solo si hay net —
+      // offline confiamos en que el usuario sabe lo que hace y que el
+      // índice único atrapará el caso al sincronizar.
+      if (navigator.onLine) {
+        const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').limit(1);
+        if (abiertos && abiertos.length > 0) {
+          notify(`Ya hay un turno abierto (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de abrir otro.`, 'warn');
+          return;
+        }
+      }
 
-    const nuevo = {
-      fecha: hoy,
-      hora_inicio: hora,
-      estado: 'abierto',
-      encargada_id: uid,
-      abierto_por: uid,
-    };
+      const { data: user } = navigator.onLine ? await sb.auth.getUser() : {data:{user:null}};
+      const ahora = new Date();
+      const hoy   = localDateISO(ahora);
+      const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+      // Si offline, usar el perfil cacheado de window.__auth (mig fn-auth)
+      const uid   = user?.user?.id || window.__auth?.perfil?.id || null;
 
-    // sbInsert genera UUID cliente si falta y maneja online/offline.
-    const { data, error, fromQueue } = await window.sbInsert('turnos', nuevo, {select:'*', single:true});
-    setAbriendo(false);
-    if (error) { notify('No se pudo abrir el turno: '+error.message, 'err'); return; }
-    if (fromQueue) notify('Turno abierto (offline · se sincroniza al volver)', 'warn');
-    else           notify('Turno abierto ✓');
-    // Ir al PV del turno recién creado (data.id existe en ambos casos)
-    navigate('turnos/pv/' + data.id);
+      const nuevo = {
+        fecha: hoy,
+        hora_inicio: hora,
+        estado: 'abierto',
+        encargada_id: uid,
+        abierto_por: uid,
+      };
+
+      // sbInsert genera UUID cliente si falta y maneja online/offline.
+      const { data, error, fromQueue } = await window.sbInsert('turnos', nuevo, {select:'*', single:true});
+      if (error) { notify('No se pudo abrir el turno: '+error.message, 'err'); return; }
+      if (fromQueue) notify('Turno abierto (offline · se sincroniza al volver)', 'warn');
+      else           notify('Turno abierto ✓');
+      // Ir al PV del turno recién creado (data.id existe en ambos casos)
+      navigate('turnos/pv/' + data.id);
+    } finally {
+      abriendoRef.current = false;
+      setAbriendo(false);
+    }
   };
 
   const abrirTurnoFila = (t) => {
@@ -389,7 +494,7 @@ const TurnosListFn = () => {
               </div>
             ) : (
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
-                {turnosFiltrados.map((t,i)=>(<TurnoRowFn key={t.id} t={t} first={i===0} onClick={()=>abrirTurnoFila(t)}/>))}
+                {turnosFiltrados.map((t,i)=>(<TurnoRowFn key={t.id} t={t} first={i===0} pendingSync={pendingTurnoIds.has(t.id)} onClick={()=>abrirTurnoFila(t)}/>))}
               </div>
             )}
           </div>
@@ -474,7 +579,7 @@ const EmptyTurnos = ({onAbrir, abriendo}) => (
 );
 
 // ─── Row de turno ───
-const TurnoRowFn = ({t, first, onClick}) => {
+const TurnoRowFn = ({t, first, pendingSync, onClick}) => {
   const statusMap = {
     abierto:  { tone:'moss',    label:'ABIERTO',  dot:'var(--moss)' },
     cerrado:  { tone:'neutral', label:'Completo', dot:'var(--ink-4)' },
@@ -509,6 +614,7 @@ const TurnoRowFn = ({t, first, onClick}) => {
             {fechaTxt}
             {retro && <span title={`Capturado retroactivo el ${new Date(t.creado).toLocaleDateString('es-MX')}`} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'var(--amber)',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>Retro</span>}
             {Number(t.reaperturas)>0 && <span title={t.reabierto_at?`Última reapertura: ${new Date(t.reabierto_at).toLocaleDateString('es-MX')}`:'Reabierto'} style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.08)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.25)'}}>Reabierto {t.reaperturas}×</span>}
+            {pendingSync && <span title="Hay operaciones de este turno pendientes de sincronizar a la nube" style={{fontSize:9,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color:'#b07228',background:'rgba(176,114,40,.12)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)',display:'inline-flex',alignItems:'center',gap:3}}>⟳ Sync pendiente</span>}
           </div>
           <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>{horaInicio} – {horaFin}</div>
         </div>
