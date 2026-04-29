@@ -565,6 +565,20 @@ const leerSnapshotTurno = async (turnoId) => {
   return await idbGet('catalog', `turno-snap:${turnoId}`);
 };
 
+// Snapshot del listado de turnos. Cache la versión enriquecida (con
+// encargada_nombre y arqueoStatus) que pinta TurnosListFn, así offline
+// se ve la misma lista que se vio la última vez online. La lista incluye
+// el turno abierto, lo que permite a la encargada darle click y entrar
+// (combinado con turno-snap:<id> para los datos detallados).
+const cacheTurnosList = async (turnos) => {
+  await idbPut('catalog', 'turnos-list', {turnos: turnos || [], ts: Date.now()});
+};
+
+const leerTurnosListCache = async () => {
+  const cached = await idbGet('catalog', 'turnos-list');
+  return cached?.turnos || [];
+};
+
 // Reintenta la cola al cargar, una vez los catálogos estén refrescados
 setTimeout(() => { drainQueue(); }, 3000);
 
@@ -577,4 +591,5 @@ Object.assign(window, {
   sbInsert, sbUpdate, sbDelete, sbUpsert, genUUID,
   // Snapshot de turno
   snapshotTurno, leerSnapshotTurno,
+  cacheTurnosList, leerTurnosListCache,
 });

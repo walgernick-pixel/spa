@@ -177,12 +177,39 @@ const TurnosListFn = () => {
 
   const cargar = React.useCallback(async () => {
     setLoading(true);
-    const [turnosQ, perfilesQ] = await Promise.all([
-      sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(500),
-      sb.from('perfiles').select('id, nombre_display, username'),
-    ]);
+
+    // Helper: si offline o si la query falla por red, cae a cache de IDB.
+    const fallbackToCache = async () => {
+      const cached = await window.leerTurnosListCache();
+      setTurnos(cached);
+      setLoading(false);
+    };
+
+    // Si offline desde el inicio, ni intentamos red.
+    if (!navigator.onLine) {
+      await fallbackToCache();
+      return;
+    }
+
+    let turnosQ, perfilesQ;
+    try {
+      [turnosQ, perfilesQ] = await Promise.all([
+        sb.from('v_turnos_resumen').select('*').order('fecha',{ascending:false}).order('hora_inicio',{ascending:false}).limit(500),
+        sb.from('perfiles').select('id, nombre_display, username'),
+      ]);
+    } catch (_) { return fallbackToCache(); }
+
     const { data, error } = turnosQ;
-    if (error) { notify('Error cargando turnos: '+error.message, 'err'); setLoading(false); return; }
+    if (error) {
+      // Si es error de red, cae a cache silenciosamente. Si es otro tipo
+      // (ej. permisos), mostramos toast.
+      if (/network|fetch|failed to fetch|abort|connection/i.test(error.message || '')) {
+        return fallbackToCache();
+      }
+      notify('Error cargando turnos: '+error.message, 'err');
+      setLoading(false);
+      return;
+    }
     const pm = {}; (perfilesQ.data || []).forEach(p => { pm[p.id] = p; });
     setPfMap(pm);
     // Enriquecer cada turno: si la vista no trajo nombres, usar lookup local
@@ -223,6 +250,10 @@ const TurnosListFn = () => {
     }
     setTurnos(data || []);
     setLoading(false);
+
+    // Cachear lista enriquecida para vista offline. Próxima vez que se
+    // abra el módulo sin red, mostramos esto en vez de error vacío.
+    if (window.cacheTurnosList) window.cacheTurnosList(data || []);
 
     // Snapshot proactivo del turno abierto: si la encargada corta la red
     // sin haber entrado al PV todavía, igual podrá abrirlo offline (lee
