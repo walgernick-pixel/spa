@@ -360,20 +360,21 @@ const TurnosListFn = () => {
     abriendoRef.current = true;
     setAbriendo(true);
     try {
-      // Validar: no puede haber otro turno abierto. Solo si hay net —
-      // offline confiamos en que el usuario sabe lo que hace y que el
-      // índice único atrapará el caso al sincronizar.
+      const { data: user } = navigator.onLine ? await sb.auth.getUser() : {data:{user:null}};
+      const ahora = new Date();
+      const hoy   = localDateISO(ahora);
+
+      // Validar: no puede haber otro turno abierto en la MISMA fecha.
+      // Sí se permite que coexistan abiertos de fechas distintas (p.ej.
+      // captura retroactiva pendiente de cerrar).
       if (navigator.onLine) {
-        const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').limit(1);
+        const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').eq('fecha', hoy).limit(1);
         if (abiertos && abiertos.length > 0) {
-          notify(`Ya hay un turno abierto (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de abrir otro.`, 'warn');
+          notify(`Ya hay un turno abierto hoy (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de abrir otro.`, 'warn');
           return;
         }
       }
 
-      const { data: user } = navigator.onLine ? await sb.auth.getUser() : {data:{user:null}};
-      const ahora = new Date();
-      const hoy   = localDateISO(ahora);
       const hora  = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
       // Si offline, usar el perfil cacheado de window.__auth (mig fn-auth)
       const uid   = user?.user?.id || window.__auth?.perfil?.id || null;
@@ -409,6 +410,13 @@ const TurnosListFn = () => {
   const capturarPasado = async ({fecha, horaInicio}) => {
     const { data: user } = await sb.auth.getUser();
     const uid = user?.user?.id || null;
+    // No bloquear si hay un turno abierto de OTRO día. Solo bloquear si
+    // ya hay uno abierto en la MISMA fecha que se intenta capturar.
+    const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').eq('fecha', fecha).limit(1);
+    if (abiertos && abiertos.length > 0) {
+      notify(`Ya hay un turno abierto en ${fecha} (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de capturar otro en la misma fecha.`, 'warn');
+      return;
+    }
     const nuevo = {
       fecha: fecha,
       hora_inicio: horaInicio,
