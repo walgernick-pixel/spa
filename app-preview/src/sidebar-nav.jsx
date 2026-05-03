@@ -78,7 +78,9 @@ const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
     ...(canAny('usuarios_ver','usuarios_gestionar','roles_gestionar') ? [
       {id:'perm',      label:'Perfiles y permisos',icon:'shield',  path:'config/perfiles'},
     ] : []),
-    {id:'respaldo',  label:'Respaldo de datos',    icon:'download', path:'config/respaldo'},
+    ...(canAny('respaldo_generar') ? [
+      {id:'respaldo',  label:'Respaldo de datos',  icon:'download',path:'config/respaldo'},
+    ] : []),
   ];
   // Si no hay items de configuración, ocultamos el separador y el header.
   const showCfgHeader = cfg.length > 0;

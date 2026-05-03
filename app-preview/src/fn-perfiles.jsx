@@ -62,6 +62,9 @@ const CATALOGO_PERMISOS = [
     {id:'usuarios_gestionar', label:'Crear / editar / resetear / eliminar usuarios'},
     {id:'roles_gestionar',    label:'Crear / editar roles y asignar permisos'},
   ]},
+  { id:'respaldo', label:'Respaldo de datos', permisos: [
+    {id:'respaldo_generar',   label:'Generar respaldo (exportar toda la base a JSON)'},
+  ]},
 ];
 
 const CLAVES_PERMISOS = CATALOGO_PERMISOS.flatMap(g => g.permisos.map(p => p.id));

@@ -115,7 +115,9 @@ const ConfigPerfilesPage = () => (
   </div></AppShell>
 );
 const ConfigRespaldoPage = () => (
-  <AppShell active="respaldo"><div style={{flex:1,overflow:'auto'}}><RespaldoPanel/></div></AppShell>
+  <AppShell active="respaldo"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('respaldo_generar') ? <RespaldoPanel/> : <Denied permiso="respaldo_generar"/>}
+  </div></AppShell>
 );
 
 Object.assign(window, { GastosHome, ConfigCuentasPage, ConfigCatalogoPage, ConfigServiciosPage, ConfigPerfilesPage, ConfigRespaldoPage, Denied, hasAny });
