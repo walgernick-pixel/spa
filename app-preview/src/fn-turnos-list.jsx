@@ -329,12 +329,18 @@ const TurnosListFn = () => {
     [preset, customDesde, customHasta]
   );
 
+  // Si el rol NO tiene `turnos_ver_cerrados`, sólo ve turnos abiertos.
+  // Los filtros de período/estado y la búsqueda dejan de tener sentido
+  // (no hay historial que filtrar), así que también se ocultan abajo.
+  const puedeVerCerrados = !!(window.can && window.can('turnos_ver_cerrados'));
+
   const turnosFiltrados = React.useMemo(() => {
     const s = search.trim().toLowerCase();
     return turnos.filter(t => {
-      if (!inRangoIso(t.fecha, rango)) return false;
-      if (estadoF !== 'todos' && t.estado !== estadoF) return false;
-      if (s) {
+      if (!puedeVerCerrados && t.estado !== 'abierto') return false;
+      if (puedeVerCerrados && !inRangoIso(t.fecha, rango)) return false;
+      if (puedeVerCerrados && estadoF !== 'todos' && t.estado !== estadoF) return false;
+      if (puedeVerCerrados && s) {
         const enc = (t.encargada_nombre || '').toLowerCase();
         const fol = String(t.folio || '').toLowerCase();
         const fec = (t.fecha || '');
@@ -342,7 +348,7 @@ const TurnosListFn = () => {
       }
       return true;
     });
-  }, [turnos, rango, estadoF, search]);
+  }, [turnos, rango, estadoF, search, puedeVerCerrados]);
 
   const metricas = useMetricasRango(turnosFiltrados, rango);
 
@@ -454,59 +460,67 @@ const TurnosListFn = () => {
 
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{padding:'24px 36px 40px'}}>
-            {/* Filtros: periodo + estado + búsqueda */}
-            <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:18}}>
-              <div style={{position:'relative',flex:'0 1 280px'}}>
-                <Icon name="search" size={14} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)'}}/>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar folio, responsable, fecha..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
+            {/* Filtros: periodo + estado + búsqueda.
+                Sólo si el rol puede ver turnos cerrados; sin permiso, no hay
+                nada que filtrar (sólo se muestran los abiertos). */}
+            {puedeVerCerrados && (
+              <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:18}}>
+                <div style={{position:'relative',flex:'0 1 280px'}}>
+                  <Icon name="search" size={14} style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--ink-3)'}}/>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar folio, responsable, fecha..." style={{width:'100%',padding:'9px 12px 9px 32px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box'}}/>
+                </div>
+                <FilterSelect label="Periodo" value={preset} onChange={setPreset} options={PRESETS_RANGO.map(p=>({value:p.id,label:p.label}))}/>
+                {preset==='custom' && (
+                  <>
+                    <input type="date" value={customDesde} onChange={e=>setCustomD(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
+                    <span style={{fontSize:12,color:'var(--ink-3)'}}>→</span>
+                    <input type="date" value={customHasta} onChange={e=>setCustomH(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
+                  </>
+                )}
+                <FilterSelect label="Estado" value={estadoF} onChange={setEstadoF} options={[
+                  {value:'todos',label:'Todos'},
+                  {value:'abierto',label:'Abierto'},
+                  {value:'cerrado',label:'Cerrado'},
+                ]}/>
+                {hayFiltros && (
+                  <button onClick={limpiarFiltros} style={{marginLeft:'auto',background:'transparent',border:'none',fontSize:12,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,textDecoration:'underline',textUnderlineOffset:3}}>Limpiar filtros</button>
+                )}
               </div>
-              <FilterSelect label="Periodo" value={preset} onChange={setPreset} options={PRESETS_RANGO.map(p=>({value:p.id,label:p.label}))}/>
-              {preset==='custom' && (
-                <>
-                  <input type="date" value={customDesde} onChange={e=>setCustomD(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
-                  <span style={{fontSize:12,color:'var(--ink-3)'}}>→</span>
-                  <input type="date" value={customHasta} onChange={e=>setCustomH(e.target.value)} style={{padding:'8px 10px',fontSize:12,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontFamily:'inherit',color:'var(--ink-1)'}}/>
-                </>
-              )}
-              <FilterSelect label="Estado" value={estadoF} onChange={setEstadoF} options={[
-                {value:'todos',label:'Todos'},
-                {value:'abierto',label:'Abierto'},
-                {value:'cerrado',label:'Cerrado'},
-              ]}/>
-              {hayFiltros && (
-                <button onClick={limpiarFiltros} style={{marginLeft:'auto',background:'transparent',border:'none',fontSize:12,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',fontWeight:500,textDecoration:'underline',textUnderlineOffset:3}}>Limpiar filtros</button>
-              )}
-            </div>
+            )}
 
-            {/* Métricas reactivas al rango filtrado */}
-            <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:28}}>
-              <MetricCell
-                lbl={`Ventas · ${labelPreset}`}
-                value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.total} size={28}/>}
-                sub={metricas.hasPrev ? (metricas.deltaTotal!==null ? 'vs período anterior' : 'sin período previo') : 'período total'}
-                delta={metricas.deltaTotal}
-              />
-              <MetricCell
-                lbl="Servicios"
-                value={loading? <Skeleton w={60} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.5}} className="num">{metricas.svcs}</span>}
-                sub={`en ${metricas.nTurnos} ${metricas.nTurnos===1?'turno':'turnos'}`}
-              />
-              <MetricCell
-                lbl="Ticket promedio"
-                value={loading? <Skeleton w={120} h={28}/> : <Money amount={Math.round(metricas.tick)} size={28}/>}
-                sub="por servicio"
-                delta={metricas.deltaTick}
-              />
-              <MetricCell
-                lbl="Turnos abiertos"
-                value={loading? <Skeleton w={30} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,color:metricas.abiertos>0?'var(--clay)':'var(--ink-0)'}} className="num">{metricas.abiertos}</span>}
-                sub={metricas.abiertos>0?'pendiente de cerrar':'ninguno abierto'}
-              />
-            </div>
+            {/* Métricas reactivas al rango filtrado.
+                Gateadas por `turnos_ver_metricas`: roles operativos (p.ej. cajera)
+                no ven totales de venta, sólo el listado y "Turnos abiertos". */}
+            {(window.can && window.can('turnos_ver_metricas')) ? (
+              <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:28}}>
+                <MetricCell
+                  lbl={`Ventas · ${labelPreset}`}
+                  value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.total} size={28}/>}
+                  sub={metricas.hasPrev ? (metricas.deltaTotal!==null ? 'vs período anterior' : 'sin período previo') : 'período total'}
+                  delta={metricas.deltaTotal}
+                />
+                <MetricCell
+                  lbl="Servicios"
+                  value={loading? <Skeleton w={60} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.5}} className="num">{metricas.svcs}</span>}
+                  sub={`en ${metricas.nTurnos} ${metricas.nTurnos===1?'turno':'turnos'}`}
+                />
+                <MetricCell
+                  lbl="Ticket promedio"
+                  value={loading? <Skeleton w={120} h={28}/> : <Money amount={Math.round(metricas.tick)} size={28}/>}
+                  sub="por servicio"
+                  delta={metricas.deltaTick}
+                />
+                <MetricCell
+                  lbl="Turnos abiertos"
+                  value={loading? <Skeleton w={30} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,color:metricas.abiertos>0?'var(--clay)':'var(--ink-0)'}} className="num">{metricas.abiertos}</span>}
+                  sub={metricas.abiertos>0?'pendiente de cerrar':'ninguno abierto'}
+                />
+              </div>
+            ) : null}
 
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)'}}>Turnos en {labelPreset.toLowerCase()}</div>
-              <div style={{fontSize:11,color:'var(--ink-3)'}}>{turnosFiltrados.length} {turnosFiltrados.length===1?'turno':'turnos'}{turnosFiltrados.length!==turnos.length && ` de ${turnos.length}`}</div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)'}}>{puedeVerCerrados ? `Turnos en ${labelPreset.toLowerCase()}` : 'Turnos abiertos'}</div>
+              <div style={{fontSize:11,color:'var(--ink-3)'}}>{turnosFiltrados.length} {turnosFiltrados.length===1?'turno':'turnos'}{puedeVerCerrados && turnosFiltrados.length!==turnos.length && ` de ${turnos.length}`}</div>
             </div>
 
             {/* Lista de turnos */}
@@ -519,11 +533,18 @@ const TurnosListFn = () => {
             ) : turnos.length === 0 ? (
               <EmptyTurnos onAbrir={abrirTurno} abriendo={abriendo}/>
             ) : turnosFiltrados.length === 0 ? (
-              <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
-                <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>No hay turnos con estos filtros</div>
-                <div style={{fontSize:13,color:'var(--ink-2)',marginBottom:16}}>Prueba ampliando el período o cambiando los filtros.</div>
-                <Btn variant="ghost" size="md" onClick={limpiarFiltros}>Limpiar filtros</Btn>
-              </div>
+              !puedeVerCerrados ? (
+                <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>No hay turnos abiertos</div>
+                  <div style={{fontSize:13,color:'var(--ink-2)'}}>Toca <strong>Abrir turno</strong> para empezar.</div>
+                </div>
+              ) : (
+                <div style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,padding:'48px 24px',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--serif)',fontSize:20,fontWeight:600,color:'var(--ink-0)',marginBottom:6}}>No hay turnos con estos filtros</div>
+                  <div style={{fontSize:13,color:'var(--ink-2)',marginBottom:16}}>Prueba ampliando el período o cambiando los filtros.</div>
+                  <Btn variant="ghost" size="md" onClick={limpiarFiltros}>Limpiar filtros</Btn>
+                </div>
+              )
             ) : (
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden'}}>
                 {turnosFiltrados.map((t,i)=>(<TurnoRowFn key={t.id} t={t} first={i===0} pendingSync={pendingTurnoIds.has(t.id)} onClick={()=>abrirTurnoFila(t)}/>))}

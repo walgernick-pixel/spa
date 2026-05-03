@@ -67,22 +67,57 @@ const PapeleraSinPermiso = () => (
   </div>
 );
 
-// ───── CONFIG — reusa screens existentes ─────
+// ───── Pantalla "sin acceso" reutilizable (404-permiso) ─────
+// Se muestra cuando la ruta exige un permiso que el rol no tiene.
+// Soporta uno o varios permisos (cualquiera basta para entrar).
+const Denied = ({permiso, volverPath='turnos', volverLabel='Ir al inicio'}) => {
+  const permList = Array.isArray(permiso) ? permiso : [permiso].filter(Boolean);
+  return (
+    <div style={{padding:60,textAlign:'center',color:'var(--ink-3)',fontSize:13,fontFamily:'var(--sans)'}}>
+      <div style={{fontFamily:'var(--serif)',fontSize:22,color:'var(--ink-1)',marginBottom:8}}>Sin acceso</div>
+      <div style={{maxWidth:420,margin:'0 auto',lineHeight:1.5}}>
+        Tu rol no tiene permiso para ver esta sección.
+        {permList.length>0 && (<> Falta {permList.length===1?'el permiso':'alguno de los permisos'}: {permList.map((p,i)=>(<React.Fragment key={p}>{i>0 && ' · '}<code>{p}</code></React.Fragment>))}.</>)}
+      </div>
+      <div style={{marginTop:18}}><Btn variant="secondary" onClick={()=>navigate(volverPath)}>← {volverLabel}</Btn></div>
+    </div>
+  );
+};
+
+// Helper: si tiene cualquiera de los permisos, devuelve true. Sin permisos
+// listados, devuelve true (sin gate). Tolerante a `can()` ausente.
+const hasAny = (...permisos) => {
+  if (permisos.length===0) return true;
+  if (typeof window.can !== 'function') return true;
+  return permisos.some(p => !!window.can(p));
+};
+
+// ───── CONFIG — reusa screens existentes (con guard de permisos) ─────
 
 const ConfigCuentasPage = () => (
-  <AppShell active="cuentas"><div style={{flex:1,overflow:'auto'}}><CuentasMonedas/></div></AppShell>
+  <AppShell active="cuentas"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('config_cuentas_ver','config_cuentas_editar') ? <CuentasMonedas/> : <Denied permiso="config_cuentas_ver"/>}
+  </div></AppShell>
 );
 const ConfigCatalogoPage = () => (
-  <AppShell active="conceptos"><div style={{flex:1,overflow:'auto'}}><CatalogoGastos/></div></AppShell>
+  <AppShell active="conceptos"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('config_catalogo_ver','config_catalogo_editar') ? <CatalogoGastos/> : <Denied permiso="config_catalogo_ver"/>}
+  </div></AppShell>
 );
 const ConfigServiciosPage = () => (
-  <AppShell active="servicios"><div style={{flex:1,overflow:'auto'}}><ServiciosComisiones/></div></AppShell>
+  <AppShell active="servicios"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('config_servicios_ver','config_servicios_editar') ? <ServiciosComisiones/> : <Denied permiso="config_servicios_ver"/>}
+  </div></AppShell>
 );
 const ConfigPerfilesPage = () => (
-  <AppShell active="perm"><div style={{flex:1,overflow:'auto'}}><PerfilesPermisos/></div></AppShell>
+  <AppShell active="perm"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('usuarios_ver','usuarios_gestionar','roles_gestionar') ? <PerfilesPermisos/> : <Denied permiso={['usuarios_ver','roles_gestionar']}/>}
+  </div></AppShell>
 );
 const ConfigRespaldoPage = () => (
-  <AppShell active="respaldo"><div style={{flex:1,overflow:'auto'}}><RespaldoPanel/></div></AppShell>
+  <AppShell active="respaldo"><div style={{flex:1,overflow:'auto'}}>
+    {hasAny('respaldo_generar') ? <RespaldoPanel/> : <Denied permiso="respaldo_generar"/>}
+  </div></AppShell>
 );
 
-Object.assign(window, { GastosHome, ConfigCuentasPage, ConfigCatalogoPage, ConfigServiciosPage, ConfigPerfilesPage, ConfigRespaldoPage });
+Object.assign(window, { GastosHome, ConfigCuentasPage, ConfigCatalogoPage, ConfigServiciosPage, ConfigPerfilesPage, ConfigRespaldoPage, Denied, hasAny });

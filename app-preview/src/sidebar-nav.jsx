@@ -46,25 +46,44 @@ const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
         role: rolData?.nombre || perfil.rol || '—',
         tone: perfil.rol === 'admin' ? 'moss' : 'clay' }
     : { name: 'Sin sesión', role: '—', tone: 'clay' };
-  // Items según permisos (gerencia ve dashboard + objetivos)
-  const items=[
+  // Items según permisos. PV/turnos siempre visible (cualquier rol con
+  // sesión necesita al menos abrir/cerrar turno). El resto se filtra por
+  // permiso del rol cargado de la DB.
+  const canAny = (...permisos) => permisos.some(p => window.can && window.can(p));
+  const items = [
     {id:'turnos',    label:'Punto de venta',       icon:'receipt', path:'turnos'},
-    {id:'gastos',    label:'Gastos',               icon:'wallet',  path:'gastos'},
-    ...(window.can && window.can('dashboard_ver') ? [
-      {id:'dash',       label:'Dashboard',         icon:'chart',    path:'dashboard'},
+    ...(canAny('gastos_ver','gastos_crear','gastos_editar','gastos_eliminar') ? [
+      {id:'gastos',    label:'Gastos',             icon:'wallet',  path:'gastos'},
     ] : []),
-    ...(window.can && window.can('objetivos_ver') ? [
-      {id:'objetivos',  label:'Objetivos',         icon:'sparkles', path:'objetivos'},
+    ...(canAny('dashboard_ver') ? [
+      {id:'dash',      label:'Dashboard',          icon:'chart',   path:'dashboard'},
+    ] : []),
+    ...(canAny('objetivos_ver') ? [
+      {id:'objetivos', label:'Objetivos',          icon:'sparkles',path:'objetivos'},
     ] : []),
   ];
-  const cfg=[
-    {id:'cuentas',   label:'Cuentas y monedas',    icon:'coins',    path:'config/cuentas'},
-    {id:'conceptos', label:'Catálogo de gastos',   icon:'wallet',   path:'config/catalogo'},
-    {id:'servicios', label:'Servicios y comisiones',icon:'sparkles',path:'config/servicios'},
-    {id:'colab',     label:'Personal',             icon:'users',    path:'config/colaboradoras'},
-    {id:'perm',      label:'Perfiles y permisos',  icon:'shield',   path:'config/perfiles'},
-    {id:'respaldo',  label:'Respaldo de datos',    icon:'download', path:'config/respaldo'},
+  const cfg = [
+    ...(canAny('config_cuentas_ver','config_cuentas_editar') ? [
+      {id:'cuentas',   label:'Cuentas y monedas',  icon:'coins',   path:'config/cuentas'},
+    ] : []),
+    ...(canAny('config_catalogo_ver','config_catalogo_editar') ? [
+      {id:'conceptos', label:'Catálogo de gastos', icon:'wallet',  path:'config/catalogo'},
+    ] : []),
+    ...(canAny('config_servicios_ver','config_servicios_editar') ? [
+      {id:'servicios', label:'Servicios y comisiones', icon:'sparkles', path:'config/servicios'},
+    ] : []),
+    ...(canAny('config_colab_ver','config_colab_editar') ? [
+      {id:'colab',     label:'Personal',           icon:'users',   path:'config/colaboradoras'},
+    ] : []),
+    ...(canAny('usuarios_ver','usuarios_gestionar','roles_gestionar') ? [
+      {id:'perm',      label:'Perfiles y permisos',icon:'shield',  path:'config/perfiles'},
+    ] : []),
+    ...(canAny('respaldo_generar') ? [
+      {id:'respaldo',  label:'Respaldo de datos',  icon:'download',path:'config/respaldo'},
+    ] : []),
   ];
+  // Si no hay items de configuración, ocultamos el separador y el header.
+  const showCfgHeader = cfg.length > 0;
   const W = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W_OPEN;
   return (
     <aside style={{width:W,height:'100%',background:'var(--paper-raised)',borderRight:'1px solid var(--line-1)',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',flexShrink:0,transition:'width .18s ease'}}>
@@ -112,8 +131,8 @@ const SidebarNav = ({active, collapsed, onToggleCollapsed}) => {
         {items.map(it=>(
           <NavItem key={it.id} {...it} active={active===it.id} collapsed={collapsed} onClick={()=>navigate(it.path)}/>
         ))}
-        <div style={{height:1,background:'var(--line-1)',margin: collapsed ? '10px 8px' : '10px 12px'}}/>
-        {!collapsed && <div style={{fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.8,textTransform:'uppercase',padding:'10px 16px 6px'}}>Configuración</div>}
+        {showCfgHeader && <div style={{height:1,background:'var(--line-1)',margin: collapsed ? '10px 8px' : '10px 12px'}}/>}
+        {showCfgHeader && !collapsed && <div style={{fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.8,textTransform:'uppercase',padding:'10px 16px 6px'}}>Configuración</div>}
         {cfg.map(it=>(
           <NavItem key={it.id} {...it} active={active===it.id} indent collapsed={collapsed} onClick={()=>navigate(it.path)}/>
         ))}
