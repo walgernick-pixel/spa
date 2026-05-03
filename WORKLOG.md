@@ -39,6 +39,13 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
   - Correr `28_permiso_turnos_ver_metricas.sql` en Supabase ANTES de mergear
     a main, para que el toggle aparezca en la UI de Perfiles.
 - **Próximo paso:** abrir PR draft, probar preview con rol "cajera".
+- **Iteración (mismo día):** se detectó que la cajera seguía viendo el listado de
+  turnos cerrados de la semana, lo cual rompía la coherencia con ocultar el
+  resumen semanal. `turnos_ver_cerrados` ya estaba en el catálogo pero nunca se
+  aplicaba; ahora `fn-turnos-list.jsx` lo respeta: si el rol no lo tiene, sólo
+  ve `estado='abierto'` y se ocultan los filtros de período/estado/búsqueda
+  (no tienen utilidad sin historial). Header pasa a "Turnos abiertos" y empty
+  state es "Toca Abrir turno para empezar".
 
 ---
 
