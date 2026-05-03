@@ -12,6 +12,36 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-05-03] Permisología: gateo de sidebar, rutas y métricas de turnos
+
+- **Estado:** Branch `claude/fix-permission-restrictions-ayeXa`, PR pendiente.
+- **Problema reportado:** Un rol "cajera" con sólo `pv_abrir_turno`/`pv_cerrar_turno`
+  veía igual los módulos de Configuración (Cuentas y monedas, Perfiles y permisos, etc.)
+  y la barra de "Ventas semanales" en el listado de turnos.
+- **Cambios:**
+  - `app-preview/src/sidebar-nav.jsx`: filtra los items del sidebar por permiso.
+    Gastos requiere `gastos_ver|crear|editar|eliminar`; cada item de Configuración
+    requiere su `config_*_ver|editar` o `usuarios_ver|gestionar|roles_gestionar`.
+    Si no quedan items de configuración, oculta el separador y el header.
+  - `app-preview/src/pages-wrappers.jsx`: agrega componente `<Denied/>` y helper
+    `hasAny(...permisos)`. Cada page wrapper de Configuración valida el permiso
+    correspondiente y muestra `<Denied/>` si el rol no lo tiene (blinda deep-links).
+  - `app-preview/index.html`: gatea las rutas de gastos/dashboard/objetivos/colab
+    con `hasAny(...)` y `<Denied/>`.
+  - `app-preview/src/fn-turnos-list.jsx`: la barra de métricas (Ventas/Servicios/
+    Ticket/Turnos abiertos) ahora se renderiza sólo si `can('turnos_ver_metricas')`.
+  - `app-preview/src/fn-perfiles.jsx`: agrega `turnos_ver_metricas` al
+    `CATALOGO_PERMISOS` (módulo PV/turnos).
+  - `supabase/28_permiso_turnos_ver_metricas.sql`: migración idempotente. admin
+    en true (forzado por trigger), encargada en true por default, otros roles
+    en false (no abrir acceso silenciosamente).
+- **Pendiente del owner:**
+  - Correr `28_permiso_turnos_ver_metricas.sql` en Supabase ANTES de mergear
+    a main, para que el toggle aparezca en la UI de Perfiles.
+- **Próximo paso:** abrir PR draft, probar preview con rol "cajera".
+
+---
+
 ## [2026-04-29] Login offline con credenciales hasheadas (en progreso, PR pendiente)
 
 - **Estado:** Implementado en rama `login-offline`. PR pendiente de abrir/mergear.

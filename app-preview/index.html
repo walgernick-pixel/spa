@@ -139,9 +139,14 @@ const App = () => {
       if(sub==='recibo') return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><Recibo/></div></AppShell>;
       return <AppShell active="turnos"><div style={{flex:1,overflow:'auto'}}><TurnosList/></div></AppShell>;
     }
-    case 'gastos':     return <GastosHome/>;
-    case 'dashboard':  return <AppShell active="dash"><Dashboard/></AppShell>;
-    case 'objetivos':  return <AppShell active="objetivos"><Objetivos/></AppShell>;
+    case 'gastos':
+      return hasAny('gastos_ver','gastos_crear','gastos_editar','gastos_eliminar')
+        ? <GastosHome/>
+        : <AppShell active="gastos"><div style={{flex:1,overflow:'auto'}}><Denied permiso="gastos_ver"/></div></AppShell>;
+    case 'dashboard':
+      return <AppShell active="dash">{hasAny('dashboard_ver') ? <Dashboard/> : <Denied permiso="dashboard_ver"/>}</AppShell>;
+    case 'objetivos':
+      return <AppShell active="objetivos">{hasAny('objetivos_ver') ? <Objetivos/> : <Denied permiso="objetivos_ver"/>}</AppShell>;
 
     // ─── Configuración ───
     case 'config':     {
@@ -149,7 +154,9 @@ const App = () => {
       if(sub==='cuentas')        return <ConfigCuentasPage/>;
       if(sub==='catalogo')       return <ConfigCatalogoPage/>;
       if(sub==='servicios')      return <ConfigServiciosPage/>;
-      if(sub==='colaboradoras')  return <AppShell active="colab"><div style={{flex:1,overflow:'auto'}}><ConfigColab/></div></AppShell>;
+      if(sub==='colaboradoras')  return <AppShell active="colab"><div style={{flex:1,overflow:'auto'}}>
+        {hasAny('config_colab_ver','config_colab_editar') ? <ConfigColab/> : <Denied permiso="config_colab_ver"/>}
+      </div></AppShell>;
       if(sub==='perfiles')       return <ConfigPerfilesPage/>;
       if(sub==='respaldo')       return <ConfigRespaldoPage/>;
       return <ConfigCuentasPage/>;

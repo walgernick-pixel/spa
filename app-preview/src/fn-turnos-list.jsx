@@ -478,31 +478,35 @@ const TurnosListFn = () => {
               )}
             </div>
 
-            {/* Métricas reactivas al rango filtrado */}
-            <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:28}}>
-              <MetricCell
-                lbl={`Ventas · ${labelPreset}`}
-                value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.total} size={28}/>}
-                sub={metricas.hasPrev ? (metricas.deltaTotal!==null ? 'vs período anterior' : 'sin período previo') : 'período total'}
-                delta={metricas.deltaTotal}
-              />
-              <MetricCell
-                lbl="Servicios"
-                value={loading? <Skeleton w={60} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.5}} className="num">{metricas.svcs}</span>}
-                sub={`en ${metricas.nTurnos} ${metricas.nTurnos===1?'turno':'turnos'}`}
-              />
-              <MetricCell
-                lbl="Ticket promedio"
-                value={loading? <Skeleton w={120} h={28}/> : <Money amount={Math.round(metricas.tick)} size={28}/>}
-                sub="por servicio"
-                delta={metricas.deltaTick}
-              />
-              <MetricCell
-                lbl="Turnos abiertos"
-                value={loading? <Skeleton w={30} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,color:metricas.abiertos>0?'var(--clay)':'var(--ink-0)'}} className="num">{metricas.abiertos}</span>}
-                sub={metricas.abiertos>0?'pendiente de cerrar':'ninguno abierto'}
-              />
-            </div>
+            {/* Métricas reactivas al rango filtrado.
+                Gateadas por `turnos_ver_metricas`: roles operativos (p.ej. cajera)
+                no ven totales de venta, sólo el listado y "Turnos abiertos". */}
+            {(window.can && window.can('turnos_ver_metricas')) ? (
+              <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr 1fr 1fr',gap:1,background:'var(--line-1)',border:'1px solid var(--line-1)',borderRadius:12,overflow:'hidden',marginBottom:28}}>
+                <MetricCell
+                  lbl={`Ventas · ${labelPreset}`}
+                  value={loading? <Skeleton w={140} h={28}/> : <Money amount={metricas.total} size={28}/>}
+                  sub={metricas.hasPrev ? (metricas.deltaTotal!==null ? 'vs período anterior' : 'sin período previo') : 'período total'}
+                  delta={metricas.deltaTotal}
+                />
+                <MetricCell
+                  lbl="Servicios"
+                  value={loading? <Skeleton w={60} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,letterSpacing:-.5}} className="num">{metricas.svcs}</span>}
+                  sub={`en ${metricas.nTurnos} ${metricas.nTurnos===1?'turno':'turnos'}`}
+                />
+                <MetricCell
+                  lbl="Ticket promedio"
+                  value={loading? <Skeleton w={120} h={28}/> : <Money amount={Math.round(metricas.tick)} size={28}/>}
+                  sub="por servicio"
+                  delta={metricas.deltaTick}
+                />
+                <MetricCell
+                  lbl="Turnos abiertos"
+                  value={loading? <Skeleton w={30} h={28}/> : <span style={{fontFamily:'var(--serif)',fontSize:28,fontWeight:500,color:metricas.abiertos>0?'var(--clay)':'var(--ink-0)'}} className="num">{metricas.abiertos}</span>}
+                  sub={metricas.abiertos>0?'pendiente de cerrar':'ninguno abierto'}
+                />
+              </div>
+            ) : null}
 
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,letterSpacing:.8,textTransform:'uppercase',color:'var(--ink-3)'}}>Turnos en {labelPreset.toLowerCase()}</div>

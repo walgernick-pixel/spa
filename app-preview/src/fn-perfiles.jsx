@@ -13,6 +13,7 @@ const CATALOGO_PERMISOS = [
     {id:'pv_registrar_venta',    label:'Registrar servicios vendidos'},
     {id:'pv_firmar_cobro',       label:'Firmar digitalmente el cobro'},
     {id:'pv_pagar_comis',        label:'Marcar comisión de terapeuta como pagada'},
+    {id:'turnos_ver_metricas',   label:'Ver métricas del listado (ventas, ticket promedio)'},
     {id:'turnos_ver_cerrados',   label:'Ver historial de turnos cerrados'},
     {id:'turnos_reabrir',        label:'Reabrir un turno cerrado'},
     {id:'turnos_editar_cerrado', label:'Editar turno cerrado'},
