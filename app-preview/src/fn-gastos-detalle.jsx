@@ -204,7 +204,12 @@ const GastosDetalleFn = ({gastoId, onBack, onEdit}) => {
                           <div style={{fontSize:13,fontWeight:600,color:'var(--ink-1)'}}>{s.cta?.label}</div>
                           <div style={{fontSize:10.5,color:'var(--ink-3)'}}>{s.cta?.tipo} · {s.cta?.moneda}</div>
                         </div>
-                        <div className="num" style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',fontFamily:'var(--serif)'}}>${Number(s.monto).toLocaleString('es-MX',{minimumFractionDigits:2})}</div>
+                        <div style={{textAlign:'right'}}>
+                          <div className="num" style={{fontSize:14,fontWeight:600,color:'var(--ink-0)',fontFamily:'var(--serif)'}}>${Number(s.monto).toLocaleString('es-MX',{minimumFractionDigits:2})} {s.moneda || s.cta?.moneda || ''}</div>
+                          {s.moneda && s.moneda!=='MXN' && (
+                            <div className="num" style={{fontSize:10.5,color:'var(--ink-3)',marginTop:2}}>≈ ${(Number(s.monto)*Number(s.tc_momento||1)).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN</div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
