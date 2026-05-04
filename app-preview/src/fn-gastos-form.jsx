@@ -527,19 +527,23 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                   const lineMXN = (parseFloat(s.monto)||0) * info.tc;
                   const muestraEquiv = info.moneda !== 'MXN' && (parseFloat(s.monto)||0) > 0;
                   return (
-                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px 140px 110px 34px',gap:10,alignItems:'center',marginBottom:8}}>
-                      <select className="cf-input" value={s.cuentaId} onChange={e=>updateSplit(i,'cuentaId',e.target.value)}>
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) 48px minmax(140px,180px) 32px',gap:8,alignItems:'center',marginBottom:6}}>
+                      <select className="cf-input" value={s.cuentaId} onChange={e=>updateSplit(i,'cuentaId',e.target.value)} style={{minWidth:0}}>
                         {catalogos.cuentas.map(c=>(<option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>))}
                       </select>
-                      <Chip tone="neutral" style={{fontSize:10,padding:'5px 8px',fontFamily:'var(--mono)',letterSpacing:.5,textAlign:'center',justifySelf:'center'}}>{info.moneda}</Chip>
-                      <div style={{position:'relative'}}>
-                        <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>$</span>
-                        <input type="number" step="0.01" min="0" value={s.monto} onChange={e=>updateSplit(i,'monto',e.target.value)} placeholder="0.00" className="cf-input num" style={{paddingLeft:22,textAlign:'right'}}/>
+                      <Chip tone="neutral" style={{fontSize:10,padding:'4px 6px',fontFamily:'var(--mono)',letterSpacing:.5,textAlign:'center',justifySelf:'stretch'}}>{info.moneda}</Chip>
+                      <div>
+                        <div style={{position:'relative'}}>
+                          <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>$</span>
+                          <input type="number" step="0.01" min="0" value={s.monto} onChange={e=>updateSplit(i,'monto',e.target.value)} placeholder="0.00" className="cf-input num" style={{paddingLeft:22,textAlign:'right'}}/>
+                        </div>
+                        {muestraEquiv && (
+                          <div className="num" style={{fontSize:10.5,color:'var(--ink-3)',textAlign:'right',marginTop:2,paddingRight:4}}>
+                            ≈ ${lineMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN
+                          </div>
+                        )}
                       </div>
-                      <div className="num" style={{fontSize:11,color:'var(--ink-3)',textAlign:'right',whiteSpace:'nowrap'}}>
-                        {muestraEquiv ? `≈ $${lineMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN` : ''}
-                      </div>
-                      <button onClick={()=>quitarSplit(i)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,cursor:'pointer',width:32,height:32,color:'var(--ink-3)',display:'flex',alignItems:'center',justifyContent:'center'}} title="Quitar línea"><Icon name="trash" size={12}/></button>
+                      <button onClick={()=>quitarSplit(i)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,cursor:'pointer',width:30,height:30,color:'var(--ink-3)',display:'flex',alignItems:'center',justifyContent:'center',justifySelf:'center'}} title="Quitar línea"><Icon name="trash" size={12}/></button>
                     </div>
                   );
                 })}
