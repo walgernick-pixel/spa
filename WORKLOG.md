@@ -12,6 +12,29 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-05-04] Gastos · split multi-moneda + dashboard fix
+
+- **Estado:** Branch `claude/fix-gastos-split-multi-currency`. Migración 30 ya aplicada en producción.
+- **Bugs reportados:**
+  1. El form pedía "cuenta madre" aun cuando se activaba "Dividir pago", aunque las cuentas se definían en cada línea.
+  2. El gasto se descontaba TODO de la cuenta madre (primera línea), nunca se distribuía. El dashboard "Flujo por cuenta" leía `gastos.cuenta_id` y `gastos.monto` directos, ignorando `gasto_pagos`.
+  3. Un split entre HSBC LAU (MXN) y USD pedía ingresar el monto USD como si fuera MXN porque el form no manejaba per-line currency.
+- **Cambios:**
+  - `supabase/30_gasto_pagos_multi_moneda.sql`: agrega `moneda`, `tc_momento` y columna generada `monto_mxn` a `gasto_pagos`. Backfill desde `gastos.moneda`+`gastos.tc_momento` (los splits viejos se interpretaban en la moneda del gasto madre).
+  - `fn-gastos-form.jsx`:
+    - Quita el requisito de cuenta madre cuando hay split.
+    - Cada línea muestra su moneda (chip) + equivalente MXN (≈ $X MXN).
+    - Validación en MXN: `splitSumMXN ≈ totalMXN` con tolerancia $0.50.
+    - Cuando se activa el split, el monto total se reinterpreta en MXN (se convierte automáticamente desde la moneda anterior).
+    - Persiste `{moneda, tc_momento}` por línea en `gasto_pagos`.
+    - Para gastos con split, `gastos.{monto,moneda,tc_momento}` quedan como `{total_MXN, 'MXN', 1}` para que `gastos.monto_mxn` (generado) sea correcto.
+  - `fn-dashboard.jsx`: precarga `gasto_pagos` para gastos con `n_pagos>1` y distribuye correctamente por cuenta destino. Fallback al gasto entero cuando no hay split.
+  - `fn-gastos-detalle.jsx`: cada línea de split muestra moneda nativa + equivalente MXN si no es MXN.
+- **Datos en producción:** los 3 gastos con split históricos quedaron correctos (todos eran MXN puro a pesar de que una cuenta era USD; coincide con lo capturado).
+- **Próximo paso:** abrir PR y probar preview.
+
+---
+
 ## [2026-05-03] Permisología: gateo de sidebar, rutas y métricas de turnos
 
 - **Estado:** Branch `claude/fix-permission-restrictions-ayeXa`, PR pendiente.

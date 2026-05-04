@@ -122,11 +122,20 @@ const DashboardFn = () => {
         const ar = await sb.from('arqueos').select('*').in('turno_id', turnoIds);
         arqueos = ar.data || [];
       }
+      // Cargar splits (gasto_pagos) sólo para gastos con n_pagos>1 dentro
+      // del periodo. Cada fila trae monto_mxn (columna generada) y cuenta_id
+      // de la cuenta DESTINO real, no la del gasto principal.
+      const gastosConSplit = (gastosQ.data || []).filter(g => Number(g.n_pagos) > 1).map(g => g.id);
+      let gastoPagos = [];
+      if (gastosConSplit.length > 0) {
+        const gp = await sb.from('gasto_pagos').select('gasto_id, cuenta_id, monto, moneda, tc_momento, monto_mxn').in('gasto_id', gastosConSplit);
+        gastoPagos = gp.data || [];
+      }
       const monedasMap = {};
       (monedasQ.data||[]).forEach(m => monedasMap[m.codigo] = m);
       setCfgFiscal(cfgQ.data || null);
       setData({
-        ventas: ventasQ.data || [], gastos: gastosQ.data || [],
+        ventas: ventasQ.data || [], gastos: gastosQ.data || [], gastoPagos,
         turnos: turnosQ.data || [], cuentas: cuentasQ.data || [],
         monedas: monedasMap, arqueos,
       });
@@ -200,7 +209,7 @@ const DashboardFn = () => {
   // Cálculos derivados
   const derivado = React.useMemo(() => {
     if (!data) return null;
-    const {ventas, gastos, turnos, cuentas, monedas, arqueos} = data;
+    const {ventas, gastos, turnos, cuentas, monedas, arqueos, gastoPagos = []} = data;
 
     // KPIs (todo en MXN equivalente)
     const totalVentas   = ventas.reduce((a,v) => a + Number(v.precio_mxn || 0), 0);
@@ -234,12 +243,32 @@ const DashboardFn = () => {
       // efectivo, lo cual subestimaba el flujo real en cuentas bancarias.
       cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
     });
+    // Distribución de gastos por cuenta. La cuenta "ingresos" se suma
+    // en moneda nativa (cada cuenta tiene una sola), entonces los gastos
+    // también deben quedar en moneda nativa de la cuenta destino.
+    //
+    // - Sin split (n_pagos<=1): usamos g.monto (moneda nativa del gasto).
+    //   Como el gasto comparte cuenta con sus eventuales ventas, el
+    //   monto está en la moneda correcta para esa cuenta.
+    // - Con split: cada línea de gasto_pagos.monto ya está en la moneda
+    //   nativa de SU cuenta destino (post mig 30). Es lo que necesitamos.
+    const gastoPagosByGasto = {};
+    gastoPagos.forEach(p => {
+      (gastoPagosByGasto[p.gasto_id] = gastoPagosByGasto[p.gasto_id] || []).push(p);
+    });
     gastos.forEach(g => {
-      // Nota: gastos con n_pagos>1 tendrían split. Por simplicidad aquí lo cargamos al cuenta_id
-      // principal. TODO: considerar splits en PR-2.
-      if (!cuentaMap[g.cuenta_id]) return;
-      cuentaMap[g.cuenta_id].gastos += Number(g.monto || 0);
-      cuentaMap[g.cuenta_id].n_gastos += 1;
+      const splits = gastoPagosByGasto[g.id];
+      if (splits && splits.length > 0) {
+        splits.forEach(p => {
+          if (!cuentaMap[p.cuenta_id]) return;
+          cuentaMap[p.cuenta_id].gastos += Number(p.monto || 0);
+          cuentaMap[p.cuenta_id].n_gastos += 1;
+        });
+      } else {
+        if (!cuentaMap[g.cuenta_id]) return;
+        cuentaMap[g.cuenta_id].gastos += Number(g.monto || 0);
+        cuentaMap[g.cuenta_id].n_gastos += 1;
+      }
     });
     // Ajuste arqueo: incorporar la realidad operativa (sobrantes/faltantes)
     // por cuenta. Esto captura escenarios como "comisión USD pagada en MXN

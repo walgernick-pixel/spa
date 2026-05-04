@@ -25,7 +25,10 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   const [notas, setNotas]         = React.useState('');
   const [file, setFile]           = React.useState(null);
   const [filePreview, setFilePrev]= React.useState(null);
-  const [splits, setSplits]       = React.useState([]); // [{cuentaId, monto}, ...]
+  // Splits: cada línea {cuentaId, monto}. La moneda y TC se derivan
+  // de la cuenta seleccionada — no se almacenan en el state local porque
+  // la cuenta es la fuente de verdad. Al guardar, se persisten en gasto_pagos.
+  const [splits, setSplits]       = React.useState([]);
   const [showSplit, setShowSplit] = React.useState(false);
 
   // ── UI ──
@@ -92,7 +95,8 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
         if (match) setIvaTasa(match.id);
         else { setIvaTasa('custom'); setIvaCustom(String(data.iva_pct)); }
       }
-      // Splits
+      // Splits: monto está en moneda nativa de la cuenta de cada línea
+      // (post-mig 30). Al cargar, lo mostramos tal cual.
       const {data: splitsData} = await sb.from('gasto_pagos').select('*').eq('gasto_id', gastoId).order('orden');
       if (splitsData && splitsData.length > 1) {
         setShowSplit(true);
@@ -110,6 +114,18 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   const tc        = moneda ? Number(moneda.tc_a_mxn) : 1;
   const montoNum  = parseFloat(monto) || 0;
   const montoMXN  = montoNum * tc;
+
+  // Helper: dado un cuentaId de un split, devuelve {moneda, tc, label}.
+  const cuentaInfo = React.useCallback((cId) => {
+    const c = catalogos.cuentas.find(x => x.id === cId);
+    if (!c) return {moneda:'MXN', tc:1, label:''};
+    const m = catalogos.monedas[c.moneda];
+    return {
+      moneda: c.moneda,
+      tc: m ? Number(m.tc_a_mxn) : 1,
+      label: c.label,
+    };
+  }, [catalogos]);
 
   // IVA derivado
   const isManualIva = ivaTasaId === 'manual';
@@ -131,9 +147,17 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
     ? (subtotal > 0 ? (ivaImporte / subtotal) * 100 : 0)
     : ivaPctSelect;
 
-  // Sumas de splits
-  const splitSum = splits.reduce((a,s)=>a+(parseFloat(s.monto)||0), 0);
-  const splitDiff = montoNum - splitSum;
+  // Sumas de splits — siempre en MXN porque las líneas pueden estar en
+  // monedas distintas. Cada línea aporta `monto * tc` (TC vigente de su
+  // cuenta). El total a comparar también va en MXN.
+  const splitSumMXN = splits.reduce((a,s)=>{
+    const {tc} = cuentaInfo(s.cuentaId);
+    return a + (parseFloat(s.monto)||0) * tc;
+  }, 0);
+  // El total en MXN viene de `montoMXN` cuando hay cuenta-madre o de
+  // `montoNum` directo si el form muestra el total en MXN (caso split).
+  const totalMXN = showSplit ? montoNum : montoMXN;
+  const splitDiff = totalMXN - splitSumMXN;
 
   // Preview del archivo
   const onFile = (f) => {
@@ -150,15 +174,36 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   // Gestión de splits
   const agregarSplit = () => {
     if (splits.length === 0) {
-      // Primer split: convertir el gasto normal en split de 2 líneas
+      // Activar split por primera vez. Convertimos el monto actual a MXN
+      // (porque al activar split el "Monto total" pasa a interpretarse en
+      // MXN, las líneas cargan su moneda nativa). Pre-llenamos 2 líneas:
+      // la primera con la cuenta actual (si hay) repartiendo monto/2.
+      const totalEnMXN = montoNum * tc;
+      if (totalEnMXN > 0) setMonto(String(totalEnMXN.toFixed(2)));
+      const primeraCuenta = cuentaId || catalogos.cuentas[0]?.id || '';
+      const segundaCuenta = catalogos.cuentas.find(c=>c.id!==primeraCuenta)?.id || '';
+      const seedFor = (cId) => {
+        if (!totalEnMXN) return '';
+        const {tc: tcLine} = cuentaInfo(cId);
+        return String(((totalEnMXN/2)/tcLine).toFixed(2));
+      };
       setSplits([
-        {cuentaId: cuentaId, monto: String(montoNum/2)},
-        {cuentaId: catalogos.cuentas.find(c=>c.id!==cuentaId)?.id || cuentaId, monto: String(montoNum/2)},
+        {cuentaId: primeraCuenta, monto: primeraCuenta ? seedFor(primeraCuenta) : ''},
+        {cuentaId: segundaCuenta, monto: segundaCuenta ? seedFor(segundaCuenta) : ''},
       ]);
     } else {
       setSplits([...splits, {cuentaId: catalogos.cuentas[0]?.id, monto: ''}]);
     }
     setShowSplit(true);
+  };
+
+  // Al desactivar split, conservamos el total en MXN y el usuario debe
+  // re-elegir cuenta. Si pone cuenta no-MXN, el monto quedará en MXN
+  // pero la cuenta sería USD — el usuario lo notará y ajustará. No
+  // intentamos adivinar la moneda para no perder dato.
+  const quitarSplitTodo = () => {
+    setShowSplit(false);
+    setSplits([]);
   };
   const quitarSplit = (idx) => {
     const nuevos = splits.filter((_,i)=>i!==idx);
@@ -174,7 +219,9 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
   // ── Guardar ──
   const guardar = async (andNuevo=false) => {
     if (!conceptoId) return notify('Falta el concepto','err');
-    if (!cuentaId)   return notify('Falta la cuenta','err');
+    // Cuando hay split, la cuenta madre no es necesaria — cada línea
+    // define su cuenta y moneda. Sin split sí se exige.
+    if (!showSplit && !cuentaId)   return notify('Falta la cuenta','err');
     if (montoNum <= 0) return notify('El monto debe ser mayor a 0','err');
     if (showSplit && splits.length >= 2) {
       // Validar splits
@@ -182,7 +229,8 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
         if (!splits[i].cuentaId) return notify(`Falta cuenta en la línea ${i+1}`, 'err');
         if (!(parseFloat(splits[i].monto)>0)) return notify(`Monto inválido en la línea ${i+1}`, 'err');
       }
-      if (Math.abs(splitDiff) > 0.01) return notify(`Los pagos no suman el total (${splitDiff>0?'faltan':'sobran'} $${Math.abs(splitDiff).toFixed(2)})`, 'err');
+      // Validación en MXN — splitSumMXN ya normaliza monedas distintas.
+      if (Math.abs(splitDiff) > 0.5) return notify(`Los pagos no suman el total en MXN (${splitDiff>0?'faltan':'sobran'} $${Math.abs(splitDiff).toFixed(2)} MXN)`, 'err');
     }
 
     setSaving(true);
@@ -200,16 +248,20 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       comprobante_url = path;
     }
 
+    // Cuando hay split, el "gasto" no tiene una sola moneda — el total se
+    // almacena en MXN para que `gastos.monto_mxn` (generado) lo refleje
+    // bien y el dashboard pueda fallback a `gastos` cuando sólo lee el
+    // total. La cuenta_id se setea a la de la primera línea (sólo para
+    // listas/visualización). El reparto real vive en gasto_pagos.
+    const splitTotalMXN = montoNum; // ya en MXN (la UI fuerza MXN como total cuando hay split)
     const payload = {
       fecha,
       concepto_id: conceptoId,
       proveedor: proveedor.trim() || null,
-      cuenta_id: (showSplit && splits.length>0) ? splits[0].cuentaId : cuentaId,
-      monto: montoNum,
-      moneda: (showSplit && splits.length>0)
-        ? catalogos.cuentas.find(c=>c.id===splits[0].cuentaId)?.moneda || cuenta.moneda
-        : cuenta.moneda,
-      tc_momento: tc,
+      cuenta_id: showSplit ? splits[0].cuentaId : cuentaId,
+      monto:  showSplit ? splitTotalMXN : montoNum,
+      moneda: showSplit ? 'MXN' : cuenta.moneda,
+      tc_momento: showSplit ? 1 : tc,
       es_facturable: esFacturable,
       iva_pct:   (esFacturable && ivaPct > 0) ? Number(ivaPct.toFixed(2)) : null,
       iva_monto: (esFacturable && isManualIva && ivaImporte > 0) ? Number(ivaImporte.toFixed(2)) : null,
@@ -233,14 +285,21 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
       gastoIdFinal = data.id;
     }
 
-    // Insertar splits (solo si hay más de 1 línea)
+    // Insertar splits (solo si hay más de 1 línea). Cada fila guarda
+    // moneda + tc_momento de la cuenta destino; monto está en moneda
+    // nativa de esa cuenta. monto_mxn es columna generada (mig 30).
     if (showSplit && splits.length >= 2) {
-      const filas = splits.map((s,i)=>({
-        gasto_id: gastoIdFinal,
-        cuenta_id: s.cuentaId,
-        monto: parseFloat(s.monto),
-        orden: i,
-      }));
+      const filas = splits.map((s,i)=>{
+        const {moneda, tc: tcLine} = cuentaInfo(s.cuentaId);
+        return {
+          gasto_id: gastoIdFinal,
+          cuenta_id: s.cuentaId,
+          monto: parseFloat(s.monto),
+          moneda,
+          tc_momento: tcLine,
+          orden: i,
+        };
+      });
       const {error: sErr} = await sb.from('gasto_pagos').insert(filas);
       if (sErr) notify('Gasto guardado pero falló el split: '+sErr.message, 'err');
     }
@@ -344,40 +403,46 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                 </F>
               </div>
 
-              {/* Proveedor + Cuenta */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:18,marginBottom:18}}>
+              {/* Proveedor + Cuenta. Cuando hay split la cuenta vive
+                  en cada línea de la división — aquí sólo se muestra
+                  proveedor a ancho completo. */}
+              <div style={{display:'grid',gridTemplateColumns: showSplit ? '1fr' : '1fr 1fr',gap:18,marginBottom:18}}>
                 <F label="Proveedor" hint="Libre · con sugerencias">
                   <input list="provedores-fn" value={proveedor} onChange={e=>setProveedor(e.target.value)} placeholder="A quién se le paga" className="cf-input"/>
                   <datalist id="provedores-fn">
                     {proveedores.map(p=><option key={p} value={p}/>)}
                   </datalist>
                 </F>
-                <F label={showSplit ? 'Cuenta (ver división abajo)' : 'Cuenta'} hint="La moneda se deriva de la cuenta">
-                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                    <select className="cf-input" value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={{flex:1,opacity:showSplit?.6:1}} disabled={showSplit}>
-                      <option value="">— Selecciona una cuenta —</option>
-                      {catalogos.cuentas.map(c=>(
-                        <option key={c.id} value={c.id}>{c.label} · {c.tipo} · {c.moneda}</option>
-                      ))}
-                    </select>
-                    {cuenta && (
-                      <Chip tone="neutral" style={{fontSize:10,padding:'5px 10px',fontFamily:'var(--mono)',letterSpacing:.5}}>
-                        {cuenta.moneda}
-                      </Chip>
-                    )}
-                  </div>
-                </F>
+                {!showSplit && (
+                  <F label="Cuenta" hint="La moneda se deriva de la cuenta">
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                      <select className="cf-input" value={cuentaId} onChange={e=>setCuenta(e.target.value)} style={{flex:1}}>
+                        <option value="">— Selecciona una cuenta —</option>
+                        {catalogos.cuentas.map(c=>(
+                          <option key={c.id} value={c.id}>{c.label} · {c.tipo} · {c.moneda}</option>
+                        ))}
+                      </select>
+                      {cuenta && (
+                        <Chip tone="neutral" style={{fontSize:10,padding:'5px 10px',fontFamily:'var(--mono)',letterSpacing:.5}}>
+                          {cuenta.moneda}
+                        </Chip>
+                      )}
+                    </div>
+                  </F>
+                )}
               </div>
 
-              {/* Monto + equivalente */}
-              <div style={{display:'grid',gridTemplateColumns:(cuenta && cuenta.moneda==='MXN')?'1fr':'1fr 200px',gap:18,marginBottom:18,padding:'18px',background:'var(--paper-sunk)',borderRadius:10,border:'1px solid var(--line-2)'}}>
-                <F label={`Monto total${cuenta?' en '+cuenta.moneda:''}`}>
+              {/* Monto total. Sin split: en moneda nativa de la cuenta
+                  (con equivalente MXN si no es MXN). Con split: se fija
+                  en MXN porque las líneas pueden tener monedas distintas. */}
+              <div style={{display:'grid',gridTemplateColumns:(showSplit || (cuenta && cuenta.moneda==='MXN'))?'1fr':'1fr 200px',gap:18,marginBottom:18,padding:'18px',background:'var(--paper-sunk)',borderRadius:10,border:'1px solid var(--line-2)'}}>
+                <F label={showSplit ? 'Monto total en MXN' : `Monto total${cuenta?' en '+cuenta.moneda:''}`} hint={showSplit ? 'La suma de las líneas debe igualar este total' : undefined}>
                   <div style={{position:'relative'}}>
                     <span style={{position:'absolute',left:16,top:'50%',transform:'translateY(-50%)',fontFamily:'var(--serif)',fontSize:26,color:'var(--ink-3)',fontWeight:500}}>$</span>
                     <input type="number" step="0.01" min="0" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00" className="num" style={{width:'100%',padding:'14px 16px 14px 36px',fontSize:26,fontWeight:500,fontFamily:'var(--serif)',letterSpacing:-.3,border:'1px solid var(--line-1)',borderRadius:10,background:'var(--paper-raised)',color:'var(--ink-0)',textAlign:'right',boxSizing:'border-box'}}/>
                   </div>
                 </F>
-                {cuenta && cuenta.moneda!=='MXN' && (
+                {!showSplit && cuenta && cuenta.moneda!=='MXN' && (
                   <F label="Equivalente MXN" hint={`TC ${tc.toFixed(2)}`}>
                     <div className="num" style={{padding:'14px 16px',fontSize:18,fontFamily:'var(--serif)',fontWeight:500,color:'var(--ink-2)',background:'var(--paper-raised)',borderRadius:10,border:'1px solid var(--line-1)',textAlign:'right'}}>
                       ${montoMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
@@ -454,21 +519,30 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                   {!showSplit ? (
                     <Btn variant="ghost" size="sm" icon="plus" onClick={agregarSplit}>Dividir pago</Btn>
                   ) : (
-                    <button onClick={()=>{setShowSplit(false);setSplits([]);}} style={{background:'transparent',border:'none',fontSize:11,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',textDecoration:'underline',textUnderlineOffset:2}}>Quitar división</button>
+                    <button onClick={quitarSplitTodo} style={{background:'transparent',border:'none',fontSize:11,color:'var(--ink-3)',cursor:'pointer',fontFamily:'inherit',textDecoration:'underline',textUnderlineOffset:2}}>Quitar división</button>
                   )}
                 </div>
-                {showSplit && splits.map((s,i)=>(
-                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 160px 34px',gap:10,alignItems:'center',marginBottom:8}}>
-                    <select className="cf-input" value={s.cuentaId} onChange={e=>updateSplit(i,'cuentaId',e.target.value)}>
-                      {catalogos.cuentas.map(c=>(<option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>))}
-                    </select>
-                    <div style={{position:'relative'}}>
-                      <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>$</span>
-                      <input type="number" step="0.01" min="0" value={s.monto} onChange={e=>updateSplit(i,'monto',e.target.value)} placeholder="0.00" className="cf-input num" style={{paddingLeft:22,textAlign:'right'}}/>
+                {showSplit && splits.map((s,i)=>{
+                  const info = cuentaInfo(s.cuentaId);
+                  const lineMXN = (parseFloat(s.monto)||0) * info.tc;
+                  const muestraEquiv = info.moneda !== 'MXN' && (parseFloat(s.monto)||0) > 0;
+                  return (
+                    <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 60px 140px 110px 34px',gap:10,alignItems:'center',marginBottom:8}}>
+                      <select className="cf-input" value={s.cuentaId} onChange={e=>updateSplit(i,'cuentaId',e.target.value)}>
+                        {catalogos.cuentas.map(c=>(<option key={c.id} value={c.id}>{c.label} · {c.moneda}</option>))}
+                      </select>
+                      <Chip tone="neutral" style={{fontSize:10,padding:'5px 8px',fontFamily:'var(--mono)',letterSpacing:.5,textAlign:'center',justifySelf:'center'}}>{info.moneda}</Chip>
+                      <div style={{position:'relative'}}>
+                        <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--ink-3)'}}>$</span>
+                        <input type="number" step="0.01" min="0" value={s.monto} onChange={e=>updateSplit(i,'monto',e.target.value)} placeholder="0.00" className="cf-input num" style={{paddingLeft:22,textAlign:'right'}}/>
+                      </div>
+                      <div className="num" style={{fontSize:11,color:'var(--ink-3)',textAlign:'right',whiteSpace:'nowrap'}}>
+                        {muestraEquiv ? `≈ $${lineMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN` : ''}
+                      </div>
+                      <button onClick={()=>quitarSplit(i)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,cursor:'pointer',width:32,height:32,color:'var(--ink-3)',display:'flex',alignItems:'center',justifyContent:'center'}} title="Quitar línea"><Icon name="trash" size={12}/></button>
                     </div>
-                    <button onClick={()=>quitarSplit(i)} style={{background:'transparent',border:'1px solid var(--line-1)',borderRadius:6,cursor:'pointer',width:32,height:32,color:'var(--ink-3)',display:'flex',alignItems:'center',justifyContent:'center'}} title="Quitar línea"><Icon name="trash" size={12}/></button>
-                  </div>
-                ))}
+                  );
+                })}
                 {showSplit && (
                   <div style={{display:'flex',gap:14,alignItems:'center',paddingTop:10,marginTop:4,borderTop:'1px dashed var(--line-1)'}}>
                     <button onClick={()=>setSplits([...splits,{cuentaId: catalogos.cuentas[0]?.id,monto:''}])} style={{background:'transparent',border:'none',fontSize:11.5,color:'var(--clay)',cursor:'pointer',fontFamily:'inherit',fontWeight:600,display:'inline-flex',alignItems:'center',gap:4}}>
@@ -476,12 +550,12 @@ const GastosFormFn = ({gastoId, onCancel, onSave}) => {
                     </button>
                     <div style={{flex:1}}/>
                     <div style={{fontSize:11,color:'var(--ink-3)'}}>
-                      Suma pagos: <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>${splitSum.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                      Suma pagos: <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>${splitSumMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN</span>
                       {' · Total gasto: '}
-                      <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>${montoNum.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                      <span className="num" style={{fontWeight:600,color:'var(--ink-1)'}}>${totalMXN.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN</span>
                     </div>
-                    <Chip tone={Math.abs(splitDiff)<0.01?'moss':'rose'} style={{fontSize:10}}>
-                      {Math.abs(splitDiff)<0.01 ? '✓ Cuadra' : (splitDiff>0?`Faltan $${splitDiff.toFixed(2)}`:`Sobran $${Math.abs(splitDiff).toFixed(2)}`)}
+                    <Chip tone={Math.abs(splitDiff)<0.5?'moss':'rose'} style={{fontSize:10}}>
+                      {Math.abs(splitDiff)<0.5 ? '✓ Cuadra' : (splitDiff>0?`Faltan $${splitDiff.toFixed(2)} MXN`:`Sobran $${Math.abs(splitDiff).toFixed(2)} MXN`)}
                     </Chip>
                   </div>
                 )}
