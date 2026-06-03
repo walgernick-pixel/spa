@@ -12,6 +12,24 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Dashboard · flujo de caja por cuenta con pagos multi-moneda
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo cambio de código (sin migración, sin tocar datos).
+- **Bug reportado (dueño):** En un rango personalizado (11–31 may), el KPI "Neto al spa" (44,075) no cuadra con la suma del "Flujo de caja por cuenta", y la cuenta de DÓLARES marcaba muchos más USD de los que hay físicamente.
+- **Diagnóstico (verificado en Supabase):**
+  - El KPI está en **MXN equivalente** y excluye propinas → es correcto.
+  - El flujo por cuenta está en **moneda nativa** de cada cuenta y antes restaba propinas → por diseño no cuadra con el KPI cuando hay cuentas USD.
+  - **Bug real:** el flujo calculaba ingresos volcando todo `venta.precio` sobre `venta.cuenta_id`, **ignorando los pagos partidos** (`venta_pagos`). 6/139 ventas del periodo tienen pago partido en varias cuentas/monedas (p.ej. 20 USD + 200 MXN). Resultado: la cuenta USD mostraba 4,425 cuando el inflo real fue 2,439 USD (≈1,986 USD inflados). Además, comisiones en pesos de esas ventas se restaban como dólares.
+- **Fix (`app-preview/src/fn-dashboard.jsx`):**
+  - Se cargan `venta_pagos` del periodo (fetch chunked por 200 ids).
+  - Ingresos por cuenta ahora salen de `venta_pagos(servicio)` en moneda nativa (fallback a `precio`/`cuenta_id` para ventas legacy sin pagos).
+  - Comisiones se reparten entre las patas cuya cuenta tiene la **misma moneda** que la venta, proporcional al monto (una comisión en pesos ya no se descuenta como dólares de la cuenta USD).
+  - Propina se atribuye a la cuenta del pago de propina (o la principal).
+  - Verificado: el total global de comisiones se conserva (42,083.60 MXN-eq); solo se reubica a la cuenta/moneda correcta. KPI no cambia. Dólares: balance ≈2,266 → ≈1,320 USD.
+- **Pendiente / nota:** El drill-down de "ingresos de cuenta" sigue filtrando por `venta.cuenta_id`, así que para ventas partidas el detalle puede no sumar exacto al total de la fila. No crítico; revisar si molesta en uso.
+
+---
+
 ## [2026-05-04] Gastos · split multi-moneda + dashboard fix
 
 - **Estado:** Branch `claude/fix-gastos-split-multi-currency`. Migración 30 ya aplicada en producción.

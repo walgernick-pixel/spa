@@ -131,11 +131,22 @@ const DashboardFn = () => {
         const gp = await sb.from('gasto_pagos').select('gasto_id, cuenta_id, monto, moneda, tc_momento, monto_mxn').in('gasto_id', gastosConSplit);
         gastoPagos = gp.data || [];
       }
+      // Pagos de venta: necesarios para repartir ingresos/comisiones por cuenta
+      // en su MONEDA NATIVA. Una venta puede partirse en varias cuentas/monedas
+      // (p.ej. 20 USD al cajón de dólares + 200 MXN a pesos); el flujo de caja
+      // debe respetar cada pata, no volcar todo el `precio` sobre una sola cuenta.
+      const ventaIds = (ventasQ.data || []).map(v => v.id);
+      let ventaPagos = [];
+      for (let i = 0; i < ventaIds.length; i += 200) {
+        const chunk = ventaIds.slice(i, i + 200);
+        const vp = await _fetchAll(() => sb.from('venta_pagos').select('venta_id, cuenta_id, tipo, monto, descuento').in('venta_id', chunk));
+        ventaPagos = ventaPagos.concat(vp.data || []);
+      }
       const monedasMap = {};
       (monedasQ.data||[]).forEach(m => monedasMap[m.codigo] = m);
       setCfgFiscal(cfgQ.data || null);
       setData({
-        ventas: ventasQ.data || [], gastos: gastosQ.data || [], gastoPagos,
+        ventas: ventasQ.data || [], gastos: gastosQ.data || [], gastoPagos, ventaPagos,
         turnos: turnosQ.data || [], cuentas: cuentasQ.data || [],
         monedas: monedasMap, arqueos,
       });
@@ -209,7 +220,7 @@ const DashboardFn = () => {
   // Cálculos derivados
   const derivado = React.useMemo(() => {
     if (!data) return null;
-    const {ventas, gastos, turnos, cuentas, monedas, arqueos, gastoPagos = []} = data;
+    const {ventas, gastos, turnos, cuentas, monedas, arqueos, gastoPagos = [], ventaPagos = []} = data;
 
     // KPIs (todo en MXN equivalente)
     const totalVentas   = ventas.reduce((a,v) => a + Number(v.precio_mxn || 0), 0);
@@ -234,14 +245,50 @@ const DashboardFn = () => {
       id: c.id, label: c.label, tipo: c.tipo, moneda: c.moneda,
       ingresos: 0, comisiones: 0, gastos: 0, ajusteArqueo: 0, n_ventas: 0, n_gastos: 0, n_arqueos: 0,
     });
+    // Agrupar pagos de venta por venta_id para repartir por cuenta destino.
+    const ventaPagosByVenta = {};
+    ventaPagos.forEach(p => {
+      (ventaPagosByVenta[p.venta_id] = ventaPagosByVenta[p.venta_id] || []).push(p);
+    });
     ventas.forEach(v => {
-      if (!cuentaMap[v.cuenta_id]) return;
-      cuentaMap[v.cuenta_id].ingresos += Number(v.precio || 0);
-      cuentaMap[v.cuenta_id].n_ventas += 1;
-      // Comisiones salen de la cuenta donde entró la venta (regla de negocio:
-      // efectivo, banco, terminal — todas). Antes solo se restaban de cuentas
-      // efectivo, lo cual subestimaba el flujo real en cuentas bancarias.
-      cuentaMap[v.cuenta_id].comisiones += Number(v.comision_monto || 0) + Number(v.propina || 0) + Number(v.comision_venta_monto || 0);
+      const pagos    = ventaPagosByVenta[v.id] || [];
+      const servLegs = pagos.filter(p => p.tipo === 'servicio');
+      const propLegs = pagos.filter(p => p.tipo === 'propina');
+
+      // Ingresos: cada pago entra en la MONEDA NATIVA de su cuenta destino.
+      // Esto respeta pagos partidos en varias cuentas/monedas. Fallback para
+      // ventas sin pagos registrados (legacy): el precio sobre la cuenta principal.
+      const legs = servLegs.length > 0
+        ? servLegs.map(p => ({cuenta_id: p.cuenta_id, monto: Number(p.monto || 0)}))
+        : [{cuenta_id: v.cuenta_id, monto: Number(v.precio || 0)}];
+      legs.forEach(l => {
+        if (!cuentaMap[l.cuenta_id]) return;
+        cuentaMap[l.cuenta_id].ingresos += l.monto;
+        cuentaMap[l.cuenta_id].n_ventas += 1;
+      });
+
+      // Comisiones: están denominadas en la moneda de la venta y salen de la
+      // cuenta donde entró (regla de negocio). Se reparten entre las patas cuya
+      // cuenta tiene la MISMA moneda que la venta, proporcional al monto. Así una
+      // comisión en pesos no se descuenta como dólares de la cuenta USD.
+      const comisTotal = Number(v.comision_monto || 0) + Number(v.comision_venta_monto || 0);
+      if (comisTotal !== 0) {
+        let target = legs.filter(l => cuentaMap[l.cuenta_id] && cuentaMap[l.cuenta_id].moneda === v.moneda);
+        if (target.length === 0) target = legs.filter(l => cuentaMap[l.cuenta_id]);
+        const base = target.reduce((a, l) => a + l.monto, 0);
+        target.forEach(l => {
+          const share = base > 0 ? l.monto / base : 1 / target.length;
+          cuentaMap[l.cuenta_id].comisiones += comisTotal * share;
+        });
+      }
+
+      // Propina: sale del flujo de la cuenta donde se cobró (pago de propina si
+      // existe; si no, la cuenta principal de la venta).
+      const propTotal = Number(v.propina || 0);
+      if (propTotal !== 0) {
+        const pc = propLegs.length > 0 ? propLegs[0].cuenta_id : v.cuenta_id;
+        if (cuentaMap[pc]) cuentaMap[pc].comisiones += propTotal;
+      }
     });
     // Distribución de gastos por cuenta. La cuenta "ingresos" se suma
     // en moneda nativa (cada cuenta tiene una sola), entonces los gastos
