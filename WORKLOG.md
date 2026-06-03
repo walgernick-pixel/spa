@@ -12,6 +12,18 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Dashboard · propinas dentro de Ingresos (bruto real)
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.3.
+- **Petición (dueño):** Que la columna Ingresos del flujo de caja muestre el **bruto real depositado = ventas + propinas**, para saber cuánto pegó realmente a la cuenta de banco (sobre ese bruto el banco cobra su comisión, que él registra aparte como gasto). Antes la propina iba en columna aparte (↕) sin tocar ingresos ni balance.
+- **Cambio (`fn-dashboard.jsx`):**
+  - La propina ahora se suma a `ingresos` (bruto) Y se resta en el balance (`balance = ingresos − comisiones − gastos − propinas`) → neto cero, balance idéntico al anterior, pero Ingresos refleja el bruto.
+  - Columna "Propinas" pasa de informativa (↕) a deducción (−, color clay). Tooltips y subtítulo actualizados. Excel relabeleado.
+  - Columna "Comisiones" sigue siendo la del terapeuta (la comisión del banco/terminal el dueño la mete como gasto, no se modela aquí).
+- **Nota:** El drill-down de Ingresos sigue mostrando solo ventas (no la propina). Menor.
+
+---
+
 ## [2026-06-03] Turnos · cerrar turno sin servicios
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG` (mismo PR #82). Solo frontend.
