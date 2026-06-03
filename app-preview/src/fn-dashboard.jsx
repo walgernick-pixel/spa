@@ -254,32 +254,32 @@ const DashboardFn = () => {
       const pagos    = ventaPagosByVenta[v.id] || [];
       const servLegs = pagos.filter(p => p.tipo === 'servicio');
       const propLegs = pagos.filter(p => p.tipo === 'propina');
+      const comPct   = Number(v.comision_pct || 0);
+      const cvPct    = (v.vendedora_id && v.vendedora_id !== v.colaboradora_id) ? Number(v.comision_venta_pct || 0) : 0;
 
-      // Ingresos: cada pago entra en la MONEDA NATIVA de su cuenta destino.
-      // Esto respeta pagos partidos en varias cuentas/monedas. Fallback para
-      // ventas sin pagos registrados (legacy): el precio sobre la cuenta principal.
-      const legs = servLegs.length > 0
-        ? servLegs.map(p => ({cuenta_id: p.cuenta_id, monto: Number(p.monto || 0)}))
-        : [{cuenta_id: v.cuenta_id, monto: Number(v.precio || 0)}];
-      legs.forEach(l => {
-        if (!cuentaMap[l.cuenta_id]) return;
-        cuentaMap[l.cuenta_id].ingresos += l.monto;
-        cuentaMap[l.cuenta_id].n_ventas += 1;
-      });
-
-      // Comisiones: están denominadas en la moneda de la venta y salen de la
-      // cuenta donde entró (regla de negocio). Se reparten entre las patas cuya
-      // cuenta tiene la MISMA moneda que la venta, proporcional al monto. Así una
-      // comisión en pesos no se descuenta como dólares de la cuenta USD.
-      const comisTotal = Number(v.comision_monto || 0) + Number(v.comision_venta_monto || 0);
-      if (comisTotal !== 0) {
-        let target = legs.filter(l => cuentaMap[l.cuenta_id] && cuentaMap[l.cuenta_id].moneda === v.moneda);
-        if (target.length === 0) target = legs.filter(l => cuentaMap[l.cuenta_id]);
-        const base = target.reduce((a, l) => a + l.monto, 0);
-        target.forEach(l => {
-          const share = base > 0 ? l.monto / base : 1 / target.length;
-          cuentaMap[l.cuenta_id].comisiones += comisTotal * share;
+      // Ingresos y comisiones POR PATA, en la moneda nativa de cada cuenta —
+      // misma fórmula que el arqueo (fn-arqueo.jsx) para que el flujo cuadre con
+      // el cajón físico. La comisión de cada pata = monto_pata × % (sobre bruto),
+      // así una venta cobrada parte en USD y parte en MXN reparte su comisión
+      // proporcional a cada cajón (10 USD de dólares + 100 MXN de pesos), tal como
+      // se paga en realidad. Fallback legacy (sin venta_pagos): precio + comisión
+      // monto sobre la cuenta principal.
+      if (servLegs.length > 0) {
+        servLegs.forEach(p => {
+          const b = cuentaMap[p.cuenta_id];
+          if (!b) return;
+          const m = Number(p.monto || 0);
+          b.ingresos   += m - Number(p.descuento || 0);
+          b.comisiones += m * comPct / 100 + m * cvPct / 100;
+          b.n_ventas   += 1;
         });
+      } else {
+        const b = cuentaMap[v.cuenta_id];
+        if (b) {
+          b.ingresos   += Number(v.precio || 0) - Number(v.descuento || 0);
+          b.comisiones += Number(v.comision_monto || 0) + (cvPct > 0 ? Number(v.comision_venta_monto || 0) : 0);
+          b.n_ventas   += 1;
+        }
       }
 
       // Propina: SÍ entra a la cuenta (la sumamos a ingresos para ver el bruto

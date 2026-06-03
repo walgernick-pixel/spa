@@ -12,6 +12,17 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Dashboard · flujo de caja cuadra con el arqueo (comisión por pata)
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.5.
+- **Hallazgo (reconciliando efectivo real del dueño, 11-31 may):** El "Balance real" del flujo de caja NO cuadraba con los arqueos / conteo físico (PESOS 9,790 vs 10,520; DÓLARES 1,304 vs 1,258). Causa: en ventas partidas multi-moneda, el dashboard atribuía TODA la comisión a la cuenta de la moneda de la venta, mientras el arqueo la reparte **por pata** (monto_pata × %, en la moneda de cada cajón). Diferencia cuantificada: exacto +730 MXN y −46 USD (= las 6 ventas partidas del periodo).
+- **Decisión (dueño):** el arqueo refleja la realidad del cajón; el dashboard debe alinearse a él.
+- **Cambio (`fn-dashboard.jsx`):** la comisión del flujo ahora se calcula **por pata = `venta_pago.monto × comision_pct/100` (+ comision_venta_pct si vendedor ≠ ejecutor)**, en la moneda nativa de cada cuenta — misma fórmula que `fn-arqueo.jsx`. Ingresos también netos de descuento por pata. Fallback legacy con comision_monto sobre la cuenta principal.
+- **Validado en SQL:** balance teórico nuevo = neto_esperado del arqueo, dif 0.00 en ambas cuentas. Con ajuste arqueo → Balance real = neto_reportado = conteo físico.
+- **Nota:** Reemplaza la atribución "misma-moneda proporcional" del PR #82 (era una aproximación; la del arqueo es la fiel). Solo afecta ventas partidas multi-moneda.
+
+---
+
 ## [2026-06-03] UX · arqueo directo desde lista + filtros persistentes
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.4.
