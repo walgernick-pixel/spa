@@ -12,6 +12,36 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Turnos · cerrar turno sin servicios
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG` (mismo PR #82). Solo frontend.
+- **Bug reportado (dueño):** No se podía cerrar un turno que no tuvo ninguna venta — el botón para pasar al arqueo/cierre solo aparecía con ≥1 servicio, obligando a inventar un masaje.
+- **Causa:** En `fn-pv.jsx` el bloque "Ir a arqueo" estaba gateado por `ventasPorColab.length > 0`. El cierre real (`fn-arqueo.jsx`) ya soportaba turno vacío (el botón "Cerrar turno" solo pide `estado==='abierto'`, y `doSave` salta el upsert si `porCuenta.length===0`). El único bloqueo era *llegar* a esa pantalla.
+- **Decisión (acordada con dueño):** Reusar el mismo camino de cierre (un solo flujo, menos bugs) en vez de un cierre directo aparte. Para turno vacío el arqueo es 0; la pantalla de arqueo vacía sirve de mensaje "sin servicios".
+- **Cambios:**
+  - `fn-pv.jsx`: el bloque ahora aparece con `estado==='abierto'` aunque no haya ventas; cuando no hay, muestra "Turno sin servicios" y botón **"Cerrar turno"** (icono check) que navega al arqueo.
+  - `fn-arqueo.jsx`: el bloque de cierre adapta el copy cuando `porCuenta.length===0` ("no hay arqueo ni recibo que generar, ciérralo directamente") y oculta "Imprimir recibo".
+
+---
+
+## [2026-06-03] Dashboard · flujo de caja por cuenta con pagos multi-moneda
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo cambio de código (sin migración, sin tocar datos).
+- **Bug reportado (dueño):** En un rango personalizado (11–31 may), el KPI "Neto al spa" (44,075) no cuadra con la suma del "Flujo de caja por cuenta", y la cuenta de DÓLARES marcaba muchos más USD de los que hay físicamente.
+- **Diagnóstico (verificado en Supabase):**
+  - El KPI está en **MXN equivalente** y excluye propinas → es correcto.
+  - El flujo por cuenta está en **moneda nativa** de cada cuenta y antes restaba propinas → por diseño no cuadra con el KPI cuando hay cuentas USD.
+  - **Bug real:** el flujo calculaba ingresos volcando todo `venta.precio` sobre `venta.cuenta_id`, **ignorando los pagos partidos** (`venta_pagos`). 6/139 ventas del periodo tienen pago partido en varias cuentas/monedas (p.ej. 20 USD + 200 MXN). Resultado: la cuenta USD mostraba 4,425 cuando el inflo real fue 2,439 USD (≈1,986 USD inflados). Además, comisiones en pesos de esas ventas se restaban como dólares.
+- **Fix (`app-preview/src/fn-dashboard.jsx`):**
+  - Se cargan `venta_pagos` del periodo (fetch chunked por 200 ids).
+  - Ingresos por cuenta ahora salen de `venta_pagos(servicio)` en moneda nativa (fallback a `precio`/`cuenta_id` para ventas legacy sin pagos).
+  - Comisiones se reparten entre las patas cuya cuenta tiene la **misma moneda** que la venta, proporcional al monto (una comisión en pesos ya no se descuenta como dólares de la cuenta USD).
+  - **Propinas:** ya NO restan del balance del flujo (antes se restaban sin sumar la entrada, subestimando la cuenta). Ahora se tratan como pass-through (entran y salen por la misma cuenta — confirmado por el dueño: la propina de tarjeta se paga por tarjeta) → neto cero. Se agregó columna informativa "Propinas ↕" en la tabla y en el Excel. HSBC sube ~3,810 vs. antes. KPI/ventas no cambian (regla #3).
+  - Verificado: el total global de comisiones se conserva (42,083.60 MXN-eq); solo se reubica a la cuenta/moneda correcta. KPI no cambia. Dólares: balance ≈2,266 → ≈1,320 USD.
+- **Pendiente / nota:** El drill-down de "ingresos de cuenta" sigue filtrando por `venta.cuenta_id`, así que para ventas partidas el detalle puede no sumar exacto al total de la fila. No crítico; revisar si molesta en uso.
+
+---
+
 ## [2026-05-04] Gastos · split multi-moneda + dashboard fix
 
 - **Estado:** Branch `claude/fix-gastos-split-multi-currency`. Migración 30 ya aplicada en producción.

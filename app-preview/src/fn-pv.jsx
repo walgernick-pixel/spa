@@ -478,18 +478,29 @@ const PVTurnoFn = () => {
           </div>
         )}
 
-        {/* Ir al arqueo */}
-        {turno.estado === 'abierto' && ventasPorColab.length > 0 && (
+        {/* Ir al arqueo / cerrar turno (también sin ventas) */}
+        {turno.estado === 'abierto' && (
           <div style={{marginTop:20,padding:16,background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
             <div>
-              <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Cuando estén listas, pasa al arqueo</div>
-              <div style={{fontSize:12,color:'var(--ink-2)'}}>Revisa el efectivo. Desde ahí cierras el turno definitivamente (puedes volver antes).</div>
+              {ventasPorColab.length > 0 ? (
+                <>
+                  <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Cuando estén listas, pasa al arqueo</div>
+                  <div style={{fontSize:12,color:'var(--ink-2)'}}>Revisa el efectivo. Desde ahí cierras el turno definitivamente (puedes volver antes).</div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:13,fontWeight:600,color:'var(--ink-0)',marginBottom:2}}>Turno sin servicios</div>
+                  <div style={{fontSize:12,color:'var(--ink-2)'}}>No se registraron ventas. Puedes cerrar el turno directamente — no hay nada que arquear.</div>
+                </>
+              )}
             </div>
             <div style={{display:'flex',gap:8}}>
               {window.can && window.can('turnos_eliminar') && (
                 <Btn variant="ghost" size="md" icon="trash" onClick={eliminarTurno} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
               )}
-              <Btn variant="moss" icon="arrow-right" size="lg" onClick={irAArqueo}>Ir a arqueo</Btn>
+              <Btn variant="moss" icon={ventasPorColab.length > 0 ? 'arrow-right' : 'check'} size="lg" onClick={irAArqueo}>
+                {ventasPorColab.length > 0 ? 'Ir a arqueo' : 'Cerrar turno'}
+              </Btn>
             </div>
           </div>
         )}
