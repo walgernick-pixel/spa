@@ -144,10 +144,10 @@ const TurnosListFn = () => {
   const [abriendo, setAbriendo]   = React.useState(false);
   const abriendoRef               = React.useRef(false);
   const [modalRetro, setModalR]   = React.useState(false);
-  const [preset, setPreset]       = React.useState('semana');
-  const [customDesde, setCustomD] = React.useState('');
-  const [customHasta, setCustomH] = React.useState('');
-  const [estadoF, setEstadoF]     = React.useState('todos'); // todos | abierto | cerrado
+  const [preset, setPreset]       = usePersistedState('turnos.preset', 'semana');
+  const [customDesde, setCustomD] = usePersistedState('turnos.desde', '');
+  const [customHasta, setCustomH] = usePersistedState('turnos.hasta', '');
+  const [estadoF, setEstadoF]     = usePersistedState('turnos.estado', 'todos'); // todos | abierto | cerrado
   const [search, setSearch]       = React.useState('');
   const [pendingTurnoIds, setPendingIds] = React.useState(new Set());
 
@@ -723,9 +723,10 @@ const TurnoRowFn = ({t, first, pendingSync, onClick}) => {
             {t.n_pagos_pendientes} pago{t.n_pagos_pendientes>1?'s':''} pendiente{t.n_pagos_pendientes>1?'s':''}
           </div>
         )}
-        {/* Estado arqueo */}
+        {/* Estado arqueo — click va directo al arqueo por cuenta de ese corte */}
         {t.arqueoStatus && t.arqueoStatus !== 'pendiente' && (
-          <ArqueoChip status={t.arqueoStatus} difMxn={t.arqueoDifMxn || 0}/>
+          <ArqueoChip status={t.arqueoStatus} difMxn={t.arqueoDifMxn || 0}
+            onVerArqueo={(e)=>{ e.stopPropagation(); navigate('turnos/arqueo/' + t.id); }}/>
         )}
       </div>
     </div>
@@ -733,19 +734,23 @@ const TurnoRowFn = ({t, first, pendingSync, onClick}) => {
 };
 
 // ─── Chip de estado de arqueo ───
-const ArqueoChip = ({status, difMxn}) => {
+const ArqueoChip = ({status, difMxn, onVerArqueo}) => {
   const fmt = (n) => '$' + Math.abs(Math.round(n)).toLocaleString('es-MX');
+  const clickable = typeof onVerArqueo === 'function';
+  const interactive = clickable ? {cursor:'pointer'} : {};
+  const hint = clickable ? ' · ver arqueo por cuenta' : '';
+  const chevron = clickable ? ' ›' : '';
   if (status === 'cuadra') {
-    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.12)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.3)'}}>✓ Cuadró</div>;
+    return <div onClick={onVerArqueo} title={'Cuadró'+hint} style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.12)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.3)',...interactive}}>✓ Cuadró{chevron}</div>;
   }
   if (status === 'sobra') {
-    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.08)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.25)'}} title="Sobrante">↑ Sobró {fmt(difMxn)}</div>;
+    return <div onClick={onVerArqueo} title={'Sobrante'+hint} style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.08)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.25)',...interactive}}>↑ Sobró {fmt(difMxn)}{chevron}</div>;
   }
   if (status === 'falta') {
-    return <div style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'#b73f5e',background:'rgba(212,83,126,.1)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(212,83,126,.3)'}} title="Faltante">↓ Faltó {fmt(difMxn)}</div>;
+    return <div onClick={onVerArqueo} title={'Faltante'+hint} style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'#b73f5e',background:'rgba(212,83,126,.1)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(212,83,126,.3)',...interactive}}>↓ Faltó {fmt(difMxn)}{chevron}</div>;
   }
   if (status === 'parcial') {
-    return <div style={{marginTop:4,fontSize:10,color:'var(--ink-3)',fontStyle:'italic'}}>arqueo parcial</div>;
+    return <div onClick={onVerArqueo} title={'Arqueo parcial'+hint} style={{marginTop:4,fontSize:10,color:'var(--ink-3)',fontStyle:'italic',...interactive}}>arqueo parcial{chevron}</div>;
   }
   return null;
 };

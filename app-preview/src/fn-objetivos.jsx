@@ -10,7 +10,7 @@ const TIPOS_OBJETIVOS = [
 ];
 
 const ObjetivosFn = () => {
-  const [periodoTipo, setPT]     = React.useState('mes');
+  const [periodoTipo, setPT]     = usePersistedState('objetivos.periodoTipo', 'mes');
   const [objetivos, setObjs]     = React.useState([]);
   const [ventas, setVentas]      = React.useState([]);
   const [ventasYoY, setVYoY]     = React.useState([]);

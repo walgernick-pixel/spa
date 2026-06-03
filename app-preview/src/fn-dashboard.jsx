@@ -64,9 +64,9 @@ const labelPeriodoPrev = (preset) => {
 
 // ─── Componente del dashboard ───
 const DashboardFn = () => {
-  const [preset, setPreset]     = React.useState('mes_actual');
-  const [customDesde, setCD]    = React.useState('');
-  const [customHasta, setCH]    = React.useState('');
+  const [preset, setPreset]     = usePersistedState('dash.preset', 'mes_actual');
+  const [customDesde, setCD]    = usePersistedState('dash.desde', '');
+  const [customHasta, setCH]    = usePersistedState('dash.hasta', '');
   const [loading, setLoading]   = React.useState(true);
   const showLoading             = useDelayedLoading(loading);
   const [data, setData]         = React.useState(null);
