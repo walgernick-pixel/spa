@@ -12,6 +12,18 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Turnos · cerrar turno sin servicios
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG` (mismo PR #82). Solo frontend.
+- **Bug reportado (dueño):** No se podía cerrar un turno que no tuvo ninguna venta — el botón para pasar al arqueo/cierre solo aparecía con ≥1 servicio, obligando a inventar un masaje.
+- **Causa:** En `fn-pv.jsx` el bloque "Ir a arqueo" estaba gateado por `ventasPorColab.length > 0`. El cierre real (`fn-arqueo.jsx`) ya soportaba turno vacío (el botón "Cerrar turno" solo pide `estado==='abierto'`, y `doSave` salta el upsert si `porCuenta.length===0`). El único bloqueo era *llegar* a esa pantalla.
+- **Decisión (acordada con dueño):** Reusar el mismo camino de cierre (un solo flujo, menos bugs) en vez de un cierre directo aparte. Para turno vacío el arqueo es 0; la pantalla de arqueo vacía sirve de mensaje "sin servicios".
+- **Cambios:**
+  - `fn-pv.jsx`: el bloque ahora aparece con `estado==='abierto'` aunque no haya ventas; cuando no hay, muestra "Turno sin servicios" y botón **"Cerrar turno"** (icono check) que navega al arqueo.
+  - `fn-arqueo.jsx`: el bloque de cierre adapta el copy cuando `porCuenta.length===0` ("no hay arqueo ni recibo que generar, ciérralo directamente") y oculta "Imprimir recibo".
+
+---
+
 ## [2026-06-03] Dashboard · flujo de caja por cuenta con pagos multi-moneda
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo cambio de código (sin migración, sin tocar datos).

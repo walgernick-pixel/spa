@@ -537,12 +537,18 @@ const ArqueoFn = () => {
               <div style={{flex:1,minWidth:240}}>
                 <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',marginBottom:3,letterSpacing:-.1}}>Cierre del turno</div>
                 <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5}}>
-                  <strong>Imprime el recibo primero</strong>, luego cierra definitivamente. Al cerrar, el turno desaparece de tu pantalla.
+                  {porCuenta.length > 0 ? (
+                    <><strong>Imprime el recibo primero</strong>, luego cierra definitivamente. Al cerrar, el turno desaparece de tu pantalla.</>
+                  ) : (
+                    <>No hubo servicios en este turno — no hay arqueo ni recibo que generar. Ciérralo directamente.</>
+                  )}
                 </div>
               </div>
-              <Btn variant="secondary" size="md" icon="receipt" onClick={imprimirRecibo} disabled={cerrando || saving}>
-                Imprimir recibo
-              </Btn>
+              {porCuenta.length > 0 && (
+                <Btn variant="secondary" size="md" icon="receipt" onClick={imprimirRecibo} disabled={cerrando || saving}>
+                  Imprimir recibo
+                </Btn>
+              )}
               <Btn variant="moss" size="lg" icon="check" onClick={cerrarTurno} disabled={cerrando || saving}>
                 {cerrando ? 'Cerrando…' : 'Cerrar turno'}
               </Btn>
