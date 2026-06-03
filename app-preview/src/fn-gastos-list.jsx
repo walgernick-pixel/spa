@@ -92,9 +92,9 @@ const GastosListFn = ({onRowClick, onNew}) => {
   const [loading, setLoading]       = React.useState(true);
   const showLoading                 = useDelayedLoading(loading);
   const [search, setSearch]         = React.useState('');
-  const [periodo, setPeriodo]       = React.useState('ult_6m');
-  const [catFiltro, setCatFiltro]   = React.useState('todas');
-  const [cuentaFiltro, setCuentaF]  = React.useState('todas');
+  const [periodo, setPeriodo]       = usePersistedState('gastos.periodo', 'ult_6m');
+  const [catFiltro, setCatFiltro]   = usePersistedState('gastos.cat', 'todas');
+  const [cuentaFiltro, setCuentaF]  = usePersistedState('gastos.cuenta', 'todas');
   const [cats, setCats]             = React.useState([]);
   const [cuentas, setCuentas]       = React.useState([]);
 

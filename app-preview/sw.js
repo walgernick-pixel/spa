@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.3.3';  // Banner "Nueva versión disponible" en lugar de auto-skipWaiting
+const VERSION    = 'v1.3.4';  // Banner "Nueva versión disponible" en lugar de auto-skipWaiting
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;

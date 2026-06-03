@@ -91,6 +91,26 @@ const useDelayedLoading = (loading, ms = 250) => {
   return show;
 };
 
+// usePersistedState: igual que useState, pero recuerda el valor en
+// sessionStorage. Sobrevive a la navegación (entras a un detalle y regresas,
+// el filtro sigue puesto) y a un F5, pero se limpia al cerrar la pestaña — así
+// al día siguiente arrancas con el default. Ideal para filtros de cada módulo.
+// `key` debe ser único por filtro (ej. 'dash.preset').
+const usePersistedState = (key, initialValue) => {
+  const storeKey = `cf_ui_${key}`;
+  const [state, setState] = React.useState(() => {
+    try {
+      const raw = sessionStorage.getItem(storeKey);
+      if (raw !== null) return JSON.parse(raw);
+    } catch (e) { /* storage no disponible o JSON inválido → default */ }
+    return initialValue;
+  });
+  React.useEffect(() => {
+    try { sessionStorage.setItem(storeKey, JSON.stringify(state)); } catch (e) { /* noop */ }
+  }, [storeKey, state]);
+  return [state, setState];
+};
+
 // Recarga forzada (limpia estado en memoria). Botón ↻ del header lo usa.
 //
 // Si hay operaciones pendientes en la cola offline, pregunta antes —

@@ -12,6 +12,20 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] UX · arqueo directo desde lista + filtros persistentes
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.4.
+- **Peticiones (dueño):**
+  1. Desde la lista de cortes, ver el arqueo **por cuenta** sin entrar al PV y scrollear (lo importante: ¿cada cuenta cuadró?, no solo el total).
+  2. Mantener los filtros al navegar (entrar a un detalle y volver sin re-poner el rango). Aplica a todos los módulos.
+- **Cambios:**
+  - `fn-turnos-list.jsx`: el badge de arqueo (✓ Cuadró / ↓ Faltó / parcial) ahora es **clickeable** → navega directo a `#turnos/arqueo/:id` (con `stopPropagation` para no disparar el click del renglón que va al PV). Chevron ` ›` + tooltip como pista. Reutiliza la pantalla de arqueo existente (desglose por cuenta, read-only si cerrado).
+  - `db.jsx`: nuevo hook `usePersistedState(key, default)` — como `useState` pero guarda en **sessionStorage** (sobrevive navegación y F5, se limpia al cerrar pestaña).
+  - Aplicado a filtros: dashboard (preset/desde/hasta), turnos (preset/desde/hasta/estado), gastos (periodo/cat/cuenta), objetivos (periodoTipo). Search se deja transitorio.
+- **Nota técnica:** `usePersistedState` es const global-lexical en db.jsx (mismo patrón que `useDelayedLoading`), accesible por nombre en los fn-*.jsx.
+
+---
+
 ## [2026-06-03] Dashboard · propinas dentro de Ingresos (bruto real)
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.3.
