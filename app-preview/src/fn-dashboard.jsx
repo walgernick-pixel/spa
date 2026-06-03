@@ -243,7 +243,7 @@ const DashboardFn = () => {
     const cuentaMap = {};
     cuentas.forEach(c => cuentaMap[c.id] = {
       id: c.id, label: c.label, tipo: c.tipo, moneda: c.moneda,
-      ingresos: 0, comisiones: 0, gastos: 0, ajusteArqueo: 0, n_ventas: 0, n_gastos: 0, n_arqueos: 0,
+      ingresos: 0, comisiones: 0, gastos: 0, propinas: 0, ajusteArqueo: 0, n_ventas: 0, n_gastos: 0, n_arqueos: 0,
     });
     // Agrupar pagos de venta por venta_id para repartir por cuenta destino.
     const ventaPagosByVenta = {};
@@ -282,12 +282,14 @@ const DashboardFn = () => {
         });
       }
 
-      // Propina: sale del flujo de la cuenta donde se cobró (pago de propina si
-      // existe; si no, la cuenta principal de la venta).
+      // Propina: NO afecta el balance. Entra a la cuenta donde se cobró y sale
+      // por la misma (se paga al terapeuta en esa misma cuenta) → neto cero.
+      // La registramos aparte solo para visibilidad (cuánto pasó por la cuenta);
+      // la regla #3 dice que las propinas no entran al corte de caja.
       const propTotal = Number(v.propina || 0);
       if (propTotal !== 0) {
         const pc = propLegs.length > 0 ? propLegs[0].cuenta_id : v.cuenta_id;
-        if (cuentaMap[pc]) cuentaMap[pc].comisiones += propTotal;
+        if (cuentaMap[pc]) cuentaMap[pc].propinas += propTotal;
       }
     });
     // Distribución de gastos por cuenta. La cuenta "ingresos" se suma
@@ -335,7 +337,7 @@ const DashboardFn = () => {
         balance: c.ingresos - c.comisiones - c.gastos,
         balanceReal: c.ingresos - c.comisiones - c.gastos + c.ajusteArqueo,
       }))
-      .filter(c => c.ingresos > 0 || c.gastos > 0 || c.ajusteArqueo !== 0)
+      .filter(c => c.ingresos > 0 || c.gastos > 0 || c.propinas > 0 || c.ajusteArqueo !== 0)
       .sort((a,b) => {
         // Efectivo MXN primero, luego tipo alfabético, luego moneda
         if (a.tipo === 'efectivo' && b.tipo !== 'efectivo') return -1;
@@ -607,9 +609,9 @@ const DashboardFn = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gastosAoA), 'Gastos');
 
     // Hoja 4: Flujo de caja por cuenta
-    const flujoAoA = [['Cuenta','Tipo','Moneda','Ingresos','Comisiones','Gastos','Balance','Ventas #','Gastos #']];
+    const flujoAoA = [['Cuenta','Tipo','Moneda','Ingresos','Comisiones','Gastos','Propinas (entra/sale)','Balance','Ventas #','Gastos #']];
     derivado.flujoPorCuenta.forEach(c => {
-      flujoAoA.push([c.label, c.tipo, c.moneda, c.ingresos, c.comisiones, c.gastos, c.balance, c.n_ventas, c.n_gastos]);
+      flujoAoA.push([c.label, c.tipo, c.moneda, c.ingresos, c.comisiones, c.gastos, c.propinas, c.balance, c.n_ventas, c.n_gastos]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(flujoAoA), 'Flujo de caja');
 
@@ -1210,13 +1212,14 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
   const symOf = (m) => monedas[m]?.simbolo || '$';
   return (
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-      <div style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
         <div>Cuenta</div>
         <div>Mon</div>
         <div className="num" style={{textAlign:'right'}}>Ingresos</div>
         <div className="num" style={{textAlign:'right'}}>Comisiones</div>
         <div className="num" style={{textAlign:'right'}}>Gastos</div>
-        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos. Asume que cada peso entra y sale por la cuenta donde se registró.">Balance teórico</div>
+        <div className="num" style={{textAlign:'right'}} title="Propinas cobradas en esta cuenta. Entran y salen (se pagan al terapeuta) — NO afectan el balance. Solo informativo.">Propinas</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos (las propinas no cuentan). Asume que cada peso entra y sale por la cuenta donde se registró.">Balance teórico</div>
         <div className="num" style={{textAlign:'right'}} title="Diferencia real al cierre del arqueo (sobrante / faltante). Captura escenarios como pago de comisiones en moneda distinta a la de la venta.">Ajuste arqueo</div>
         <div className="num" style={{textAlign:'right'}} title="Balance real = balance teórico + ajuste arqueo. Refleja el flujo de caja como realmente sucedió.">Balance real</div>
       </div>
@@ -1229,7 +1232,7 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
         const ajusteSigno = (c.ajusteArqueo || 0) > 0 ? 'sobró' : (c.ajusteArqueo || 0) < 0 ? 'faltó' : null;
         const ajusteColor = ajusteAbs < 1 ? 'var(--ink-3)' : (c.ajusteArqueo > 0 ? 'var(--moss)' : '#b73f5e');
         return (
-          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
+          <div key={c.id} style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'8px 10px',fontSize:12,alignItems:'center',borderRadius:6,background:'var(--paper)'}}>
             <div>
               <div style={{fontWeight:600,color:'var(--ink-0)'}}>{c.label}</div>
               <div style={{fontSize:10,color:'var(--ink-3)',textTransform:'capitalize'}}>{c.tipo}</div>
@@ -1238,6 +1241,7 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
             <div className="num" onClick={clickable && c.n_ventas > 0 ? ()=>onDrill(c, 'ingresos') : undefined} style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600,...cellClickStyle(c.n_ventas > 0)}} title={c.n_ventas > 0 ? `${c.n_ventas} ventas — click para ver detalle` : ''}>{c.n_ventas > 0 ? '+' + fmt(c.ingresos) : '—'}</div>
             <div className="num" style={{textAlign:'right',color:c.comisiones > 0 ? 'var(--clay)' : 'var(--ink-3)'}}>{c.comisiones > 0 ? '−' + fmt(c.comisiones) : '—'}</div>
             <div className="num" onClick={clickable && c.n_gastos > 0 ? ()=>onDrill(c, 'gastos') : undefined} style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)',...cellClickStyle(c.n_gastos > 0)}} title={c.n_gastos > 0 ? `${c.n_gastos} gastos — click para ver detalle` : ''}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
+            <div className="num" style={{textAlign:'right',color:c.propinas > 0 ? 'var(--ink-3)' : 'var(--ink-3)'}} title={c.propinas > 0 ? 'Entró y salió (se pagó al terapeuta) — no afecta el balance' : ''}>{c.propinas > 0 ? '↕' + fmt(c.propinas) : '—'}</div>
             <div className="num" style={{textAlign:'right',fontWeight:600,color:c.balance >= 0 ? 'var(--ink-2)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
             <div className="num" style={{textAlign:'right',color:ajusteColor}} title={c.n_arqueos > 0 ? `${c.n_arqueos} arqueo${c.n_arqueos>1?'s':''} con ajuste` : 'Sin arqueos cerrados aún'}>
               {ajusteAbs < 1 ? '—' : (

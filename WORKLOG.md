@@ -24,7 +24,7 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
   - Se cargan `venta_pagos` del periodo (fetch chunked por 200 ids).
   - Ingresos por cuenta ahora salen de `venta_pagos(servicio)` en moneda nativa (fallback a `precio`/`cuenta_id` para ventas legacy sin pagos).
   - Comisiones se reparten entre las patas cuya cuenta tiene la **misma moneda** que la venta, proporcional al monto (una comisión en pesos ya no se descuenta como dólares de la cuenta USD).
-  - Propina se atribuye a la cuenta del pago de propina (o la principal).
+  - **Propinas:** ya NO restan del balance del flujo (antes se restaban sin sumar la entrada, subestimando la cuenta). Ahora se tratan como pass-through (entran y salen por la misma cuenta — confirmado por el dueño: la propina de tarjeta se paga por tarjeta) → neto cero. Se agregó columna informativa "Propinas ↕" en la tabla y en el Excel. HSBC sube ~3,810 vs. antes. KPI/ventas no cambian (regla #3).
   - Verificado: el total global de comisiones se conserva (42,083.60 MXN-eq); solo se reubica a la cuenta/moneda correcta. KPI no cambia. Dólares: balance ≈2,266 → ≈1,320 USD.
 - **Pendiente / nota:** El drill-down de "ingresos de cuenta" sigue filtrando por `venta.cuenta_id`, así que para ventas partidas el detalle puede no sumar exacto al total de la fila. No crítico; revisar si molesta en uso.
 
