@@ -282,14 +282,17 @@ const DashboardFn = () => {
         });
       }
 
-      // Propina: NO afecta el balance. Entra a la cuenta donde se cobró y sale
-      // por la misma (se paga al terapeuta en esa misma cuenta) → neto cero.
-      // La registramos aparte solo para visibilidad (cuánto pasó por la cuenta);
-      // la regla #3 dice que las propinas no entran al corte de caja.
+      // Propina: SÍ entra a la cuenta (la sumamos a ingresos para ver el bruto
+      // real depositado = ventas + propinas) y SÍ sale por la misma cuenta (se
+      // paga al terapeuta) → la restamos en el balance. Neto cero en el balance,
+      // pero visible: el ingreso refleja lo que realmente pegó a la cuenta.
       const propTotal = Number(v.propina || 0);
       if (propTotal !== 0) {
         const pc = propLegs.length > 0 ? propLegs[0].cuenta_id : v.cuenta_id;
-        if (cuentaMap[pc]) cuentaMap[pc].propinas += propTotal;
+        if (cuentaMap[pc]) {
+          cuentaMap[pc].ingresos += propTotal;
+          cuentaMap[pc].propinas += propTotal;
+        }
       }
     });
     // Distribución de gastos por cuenta. La cuenta "ingresos" se suma
@@ -334,8 +337,10 @@ const DashboardFn = () => {
     const flujoPorCuenta = Object.values(cuentaMap)
       .map(c => ({
         ...c,
-        balance: c.ingresos - c.comisiones - c.gastos,
-        balanceReal: c.ingresos - c.comisiones - c.gastos + c.ajusteArqueo,
+        // Las propinas están incluidas en ingresos (bruto real) pero también
+        // salen al terapeuta → se restan, neto cero en el balance.
+        balance: c.ingresos - c.comisiones - c.gastos - c.propinas,
+        balanceReal: c.ingresos - c.comisiones - c.gastos - c.propinas + c.ajusteArqueo,
       }))
       .filter(c => c.ingresos > 0 || c.gastos > 0 || c.propinas > 0 || c.ajusteArqueo !== 0)
       .sort((a,b) => {
@@ -609,7 +614,7 @@ const DashboardFn = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gastosAoA), 'Gastos');
 
     // Hoja 4: Flujo de caja por cuenta
-    const flujoAoA = [['Cuenta','Tipo','Moneda','Ingresos','Comisiones','Gastos','Propinas (entra/sale)','Balance','Ventas #','Gastos #']];
+    const flujoAoA = [['Cuenta','Tipo','Moneda','Ingresos (con propinas)','Comisiones','Gastos','Propinas (incluidas, salen)','Balance','Ventas #','Gastos #']];
     derivado.flujoPorCuenta.forEach(c => {
       flujoAoA.push([c.label, c.tipo, c.moneda, c.ingresos, c.comisiones, c.gastos, c.propinas, c.balance, c.n_ventas, c.n_gastos]);
     });
@@ -785,7 +790,7 @@ const DashboardFn = () => {
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
                 <div>
                   <div style={{fontFamily:'var(--serif)',fontSize:17,fontWeight:600,color:'var(--ink-0)',letterSpacing:-.2}}>Flujo de caja por cuenta</div>
-                  <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>Ingresos − comisiones efectivo − gastos = balance</div>
+                  <div style={{fontSize:11,color:'var(--ink-3)',marginTop:2}}>Ingresos (ventas + propinas) − comisiones − gastos − propinas = balance</div>
                 </div>
               </div>
               <FlujoCuentaTable cuentas={derivado.flujoPorCuenta} monedas={data.monedas} onDrill={(cuenta, tipo) => abrirDrill(tipo==='ingresos'?'cuenta-ingresos':'cuenta-gastos', cuenta.id, `${tipo==='ingresos'?'Ingresos':'Gastos'} de ${cuenta.label}`)}/>
@@ -1215,11 +1220,11 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
       <div style={{display:'grid',gridTemplateColumns:'1.4fr 70px 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.9fr 1fr',gap:10,padding:'6px 10px',fontSize:10,fontWeight:700,color:'var(--ink-3)',letterSpacing:.4,textTransform:'uppercase',borderBottom:'1px solid var(--line-2)'}}>
         <div>Cuenta</div>
         <div>Mon</div>
-        <div className="num" style={{textAlign:'right'}}>Ingresos</div>
+        <div className="num" style={{textAlign:'right'}} title="Bruto real depositado en la cuenta = ventas + propinas cobradas aquí.">Ingresos</div>
         <div className="num" style={{textAlign:'right'}}>Comisiones</div>
         <div className="num" style={{textAlign:'right'}}>Gastos</div>
-        <div className="num" style={{textAlign:'right'}} title="Propinas cobradas en esta cuenta. Entran y salen (se pagan al terapeuta) — NO afectan el balance. Solo informativo.">Propinas</div>
-        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos (las propinas no cuentan). Asume que cada peso entra y sale por la cuenta donde se registró.">Balance teórico</div>
+        <div className="num" style={{textAlign:'right'}} title="Propinas cobradas en esta cuenta. Ya vienen incluidas en Ingresos (bruto), y se restan aquí porque salen al terapeuta — neto cero en el balance.">Propinas</div>
+        <div className="num" style={{textAlign:'right'}} title="Balance teórico = ingresos − comisiones − gastos − propinas. Las propinas entran y salen, así que no mueven el balance.">Balance teórico</div>
         <div className="num" style={{textAlign:'right'}} title="Diferencia real al cierre del arqueo (sobrante / faltante). Captura escenarios como pago de comisiones en moneda distinta a la de la venta.">Ajuste arqueo</div>
         <div className="num" style={{textAlign:'right'}} title="Balance real = balance teórico + ajuste arqueo. Refleja el flujo de caja como realmente sucedió.">Balance real</div>
       </div>
@@ -1241,7 +1246,7 @@ const FlujoCuentaTable = ({cuentas, monedas, onDrill}) => {
             <div className="num" onClick={clickable && c.n_ventas > 0 ? ()=>onDrill(c, 'ingresos') : undefined} style={{textAlign:'right',color:'var(--ink-1)',fontWeight:600,...cellClickStyle(c.n_ventas > 0)}} title={c.n_ventas > 0 ? `${c.n_ventas} ventas — click para ver detalle` : ''}>{c.n_ventas > 0 ? '+' + fmt(c.ingresos) : '—'}</div>
             <div className="num" style={{textAlign:'right',color:c.comisiones > 0 ? 'var(--clay)' : 'var(--ink-3)'}}>{c.comisiones > 0 ? '−' + fmt(c.comisiones) : '—'}</div>
             <div className="num" onClick={clickable && c.n_gastos > 0 ? ()=>onDrill(c, 'gastos') : undefined} style={{textAlign:'right',color:c.gastos > 0 ? '#b73f5e' : 'var(--ink-3)',...cellClickStyle(c.n_gastos > 0)}} title={c.n_gastos > 0 ? `${c.n_gastos} gastos — click para ver detalle` : ''}>{c.gastos > 0 ? '−' + fmt(c.gastos) : '—'}</div>
-            <div className="num" style={{textAlign:'right',color:c.propinas > 0 ? 'var(--ink-3)' : 'var(--ink-3)'}} title={c.propinas > 0 ? 'Entró y salió (se pagó al terapeuta) — no afecta el balance' : ''}>{c.propinas > 0 ? '↕' + fmt(c.propinas) : '—'}</div>
+            <div className="num" style={{textAlign:'right',color:c.propinas > 0 ? 'var(--clay)' : 'var(--ink-3)'}} title={c.propinas > 0 ? 'Incluida en Ingresos (bruto). Sale al terapeuta, por eso se resta — neto cero en el balance.' : ''}>{c.propinas > 0 ? '−' + fmt(c.propinas) : '—'}</div>
             <div className="num" style={{textAlign:'right',fontWeight:600,color:c.balance >= 0 ? 'var(--ink-2)' : '#b73f5e',fontFamily:'var(--serif)',fontSize:13}}>{c.balance >= 0 ? '' : '−'}{fmt(c.balance)}</div>
             <div className="num" style={{textAlign:'right',color:ajusteColor}} title={c.n_arqueos > 0 ? `${c.n_arqueos} arqueo${c.n_arqueos>1?'s':''} con ajuste` : 'Sin arqueos cerrados aún'}>
               {ajusteAbs < 1 ? '—' : (
