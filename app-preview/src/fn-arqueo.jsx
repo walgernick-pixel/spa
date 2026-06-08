@@ -23,6 +23,7 @@ const ArqueoFn = () => {
   const [confirmando, setConfirmando] = React.useState(false);
   const [notaConfirm, setNotaConfirm] = React.useState('');
   const [confirmadorNombre, setConfirmadorNombre] = React.useState(null);
+  const [manualCuentas, setManualCuentas] = React.useState([]); // cuentas sin ventas agregadas a mano (conteo informativo)
 
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
@@ -115,6 +116,14 @@ const ArqueoFn = () => {
     });
     setReportados(pre);
     setNotas(notaExistente);
+    // Reconstruir cuentas "manuales": filas de arqueo cuya cuenta NO tuvo ventas
+    // en el turno (conteo informativo agregado a mano).
+    const salesCuentaIds = new Set();
+    (pagosData || []).forEach(p => { if (p.tipo === 'servicio') salesCuentaIds.add(p.cuenta_id); });
+    (ventasData || []).forEach(v => { if (v.cuenta_id) salesCuentaIds.add(v.cuenta_id); });
+    const manualIds = [...new Set((arqueosData || []).map(a => a.cuenta_id))]
+      .filter(cid => cid && !salesCuentaIds.has(cid));
+    setManualCuentas(manualIds);
     setLoading(false);
   },[turnoId]);
 
@@ -200,6 +209,16 @@ const ArqueoFn = () => {
       // Propinas: NO entran al arqueo (son independientes de la venta y del corte).
       // Se liquidan al terapeuta en la pestaña de pagos del PV.
     });
+    // Cuentas agregadas a mano (sin ventas): conteo informativo, neto esperado 0.
+    manualCuentas.forEach(cid => {
+      if (map[cid]) return; // ya tiene ventas → no es manual
+      const cuenta = cuentaMap[cid];
+      if (!cuenta) return;
+      map[cid] = {
+        cuenta_id: cid, label: cuenta.label, tipo: cuenta.tipo, moneda: cuenta.moneda,
+        ventasTotal: 0, comisionesPagadas: 0, pendientes: 0, nVentas: 0, manual: true,
+      };
+    });
     Object.values(map).forEach(b => {
       b.netoEsperado = b.ventasTotal - b.comisionesPagadas;
     });
@@ -212,7 +231,7 @@ const ArqueoFn = () => {
       if (b.moneda === 'MXN') return 1;
       return a.label.localeCompare(b.label);
     });
-  },[ventas, cuentas, colabPagada]);
+  },[ventas, cuentas, colabPagada, manualCuentas]);
 
   // Autosave silencioso (debounced 700ms)
   const saveTimerRef  = React.useRef(null);
@@ -226,7 +245,9 @@ const ArqueoFn = () => {
     const filas = porCuenta.map(b => {
       const v = rep[b.cuenta_id];
       const repNum = v !== '' && v !== undefined && v !== null ? parseFloat(v) : null;
-      const dif = repNum !== null && !isNaN(repNum) ? (repNum - b.netoEsperado) : null;
+      // Cuentas manuales (sin ventas): conteo informativo → diferencia SIEMPRE 0
+      // para que no contamine el ajuste de arqueo del dashboard.
+      const dif = b.manual ? 0 : (repNum !== null && !isNaN(repNum) ? (repNum - b.netoEsperado) : null);
       return {
         turno_id: turnoId,
         cuenta_id: b.cuenta_id,
@@ -260,6 +281,18 @@ const ArqueoFn = () => {
     setNotas(val);
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => doSave(undefined, val), 800);
+  };
+
+  // Agregar una cuenta SIN ventas para conteo informativo (cambio, fondo, monedas).
+  const agregarCuentaManual = (cuentaId) => {
+    if (!cuentaId) return;
+    setManualCuentas(prev => prev.includes(cuentaId) ? prev : [...prev, cuentaId]);
+  };
+  // Quitar una cuenta manual (también borra su fila guardada).
+  const quitarCuentaManual = async (cuentaId) => {
+    setManualCuentas(prev => prev.filter(id => id !== cuentaId));
+    setReportados(r => { const n = {...r}; delete n[cuentaId]; return n; });
+    try { await sb.from('arqueos').delete().eq('turno_id', turnoId).eq('cuenta_id', cuentaId); } catch (_) {}
   };
 
   // Eliminar arqueo (solo gerencia — borra las filas de arqueos para este turno)
@@ -468,6 +501,37 @@ const ArqueoFn = () => {
               {/* Cards por CUENTA */}
               <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:18}}>
                 {porCuenta.map(b => {
+                  // Tarjeta de conteo manual (cuenta sin ventas): informativa.
+                  if (b.manual) {
+                    const symM = monedas[b.moneda]?.simbolo || '$';
+                    const repM = reportados[b.cuenta_id];
+                    const tipoLabelM = {efectivo:'Efectivo',terminal:'Terminal',banco:'Banco'}[b.tipo] || b.tipo;
+                    return (
+                      <div key={b.cuenta_id} style={{background:'var(--paper-raised)',border:'1px dashed var(--line-1)',borderRadius:12,overflow:'hidden'}}>
+                        <div style={{padding:'12px 20px',background:'var(--paper-sunk)',borderBottom:'1px solid var(--line-1)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                          <span style={{fontSize:14,fontWeight:700,color:'var(--ink-0)',letterSpacing:-.1}}>{b.label}</span>
+                          <span style={{fontSize:10,fontWeight:700,color:'var(--ink-3)',textTransform:'uppercase',letterSpacing:.4}}>{tipoLabelM}</span>
+                          <span style={{fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>· {b.moneda}</span>
+                          <span style={{fontSize:10,fontWeight:700,color:'#b07228',background:'rgba(176,114,40,.1)',padding:'2px 6px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)',textTransform:'uppercase',letterSpacing:.3}}>conteo manual</span>
+                          <div style={{flex:1}}/>
+                          {turno.estado === 'abierto' && (
+                            <button onClick={()=>quitarCuentaManual(b.cuenta_id)} title="Quitar esta cuenta" style={{background:'transparent',border:'none',cursor:'pointer',color:'var(--ink-3)',fontSize:18,lineHeight:1,padding:0}}>×</button>
+                          )}
+                        </div>
+                        <div style={{padding:'16px 20px'}}>
+                          <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5,marginBottom:12}}>
+                            Esta cuenta no tuvo ventas en el turno. Registra lo que contaste físicamente (cambio, monedas sueltas, fondo). Es <strong>informativo</strong>: no cuenta como sobrante ni faltante, y no afecta el balance.
+                          </div>
+                          <label style={{display:'block',fontSize:11,fontWeight:600,letterSpacing:.3,color:'var(--ink-2)',marginBottom:5}}>Contado físicamente</label>
+                          <div style={{position:'relative',maxWidth:300}}>
+                            <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',fontSize:20,fontFamily:'var(--serif)',color:'var(--ink-3)',fontWeight:500}}>{symM}</span>
+                            <input type="number" step="0.01" min="0" value={repM||''} onChange={e=>actualizarReportado(b.cuenta_id, e.target.value)} placeholder={turno.estado==='cerrado'?'—':'0.00'} disabled={turno.estado==='cerrado'} className="num"
+                              style={{width:'100%',padding:'14px 14px 14px 36px',fontSize:22,fontWeight:600,fontFamily:'var(--serif)',letterSpacing:-.3,border:'1.5px solid var(--line-1)',borderRadius:10,background:turno.estado==='cerrado'?'var(--paper-sunk)':'var(--paper-raised)',color:'var(--ink-0)',textAlign:'right',boxSizing:'border-box',cursor:turno.estado==='cerrado'?'not-allowed':'text'}}/>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                   const sym = monedas[b.moneda]?.simbolo || '$';
                   const tipoColor = {
                     efectivo: 'var(--moss)',
@@ -549,6 +613,23 @@ const ArqueoFn = () => {
                   );
                 })}
               </div>
+
+              {/* Agregar cuenta SIN ventas (conteo informativo: cambio, fondo, monedas) */}
+              {turno.estado === 'abierto' && (() => {
+                const yaEn = new Set(porCuenta.map(b => b.cuenta_id));
+                const disponibles = cuentas.filter(c => c.activo !== false && !yaEn.has(c.id));
+                if (disponibles.length === 0) return null;
+                return (
+                  <div style={{marginBottom:18,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                    <span style={{fontSize:12,color:'var(--ink-3)'}}>¿Quedó efectivo de otra cuenta (cambio, fondo)?</span>
+                    <select value="" onChange={e=>{ agregarCuentaManual(e.target.value); e.target.value=''; }}
+                      style={{padding:'8px 12px',border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper-raised)',fontSize:13,fontFamily:'inherit',color:'var(--ink-1)',cursor:'pointer'}}>
+                      <option value="">+ Agregar cuenta a arquear…</option>
+                      {disponibles.map(c => <option key={c.id} value={c.id}>{c.label} ({c.moneda})</option>)}
+                    </select>
+                  </div>
+                );
+              })()}
 
               {/* Notas */}
               <div style={{background:'var(--paper-raised)',border:'1px solid var(--line-1)',borderRadius:12,padding:'16px 20px',marginBottom:18}}>

@@ -12,6 +12,20 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Arqueo · agregar cuenta sin ventas (conteo informativo)
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo frontend (sin migración). Bump SW a v1.3.7.
+- **Caso (dueño):** A veces queda efectivo en una cuenta que no tuvo ventas (ej. dieron cambio de USD en pesos), y el arqueo no mostraba esa cuenta (solo arquea cuentas con ventas). Decisión: opción A — registro **informativo** (no marca sobrante/faltante, no afecta dashboard).
+- **Cambio (`fn-arqueo.jsx`):**
+  - Botón/selector **"+ Agregar cuenta a arquear"** (solo turno abierto) para cuentas sin ventas.
+  - Esas cuentas se agregan a `porCuenta` con `manual:true`, neto esperado 0; se renderiza una tarjeta simple (solo input "contado físicamente" + nota de que es informativo) con botón × para quitar.
+  - `doSave`: filas manuales se guardan con `diferencia: 0` (no contaminan el ajuste de arqueo del dashboard ni el badge de la lista).
+  - Al cargar, se reconstruyen las cuentas manuales (filas de arqueo cuya cuenta no tuvo ventas).
+  - `manualCuentas` state; helpers agregar/quitar (quitar borra la fila guardada).
+- **Nota:** No requirió columnas nuevas; usa la tabla `arqueos` con esperado/dif 0.
+
+---
+
 ## [2026-06-03] Turnos · confirmación de arqueo en escritorio (cadena de custodia)
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Migración 31 YA aplicada en Supabase. Frontend + bump SW a v1.3.6.
