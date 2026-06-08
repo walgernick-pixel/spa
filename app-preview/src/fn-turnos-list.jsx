@@ -270,7 +270,10 @@ const TurnosListFn = () => {
           t.arqueoStatus = arqueos.length > 0 ? 'parcial' : 'pendiente'; // registrados pero sin reportar
           t.arqueoDifMxn = 0;
         } else {
-          const dif = reportados.reduce((s,a) => s + (Number(a.diferencia)||0) * (tcByMoneda[a.moneda]||1), 0);
+          // Cuadre general: (reportado − esperado) en pesos eq. de cada cuenta.
+          // Para cuentas normales = diferencia; para conteo manual (esperado 0)
+          // suma lo contado → compensa entre monedas (ej. cambio USD dado en MXN).
+          const dif = reportados.reduce((s,a) => s + ((Number(a.neto_reportado)||0) - (Number(a.neto_esperado)||0)) * (tcByMoneda[a.moneda]||1), 0);
           t.arqueoDifMxn = dif;
           t.arqueoStatus = Math.abs(dif) < 0.5 ? 'cuadra' : (dif > 0 ? 'sobra' : 'falta');
         }

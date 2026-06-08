@@ -456,6 +456,18 @@ const ArqueoFn = () => {
   const totalVentaMXN = porCuenta.reduce((a,b)=>a+(b.ventasTotal * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const totalEsperadoMXN = porCuenta.reduce((a,b)=>a+(b.netoEsperado * Number(monedas[b.moneda]?.tc_a_mxn || 1)), 0);
   const hayArqueoExistente = arqueos.length > 0 && arqueos.some(a => a.neto_reportado !== null);
+  // Cuadre general (pesos eq.): suma (reportado − esperado) de TODAS las cuentas,
+  // incluido el conteo manual (esperado 0). Así un faltante en una moneda se
+  // compensa con un sobrante en otra (ej. cambio de dólares dado en pesos).
+  let algunReportado = false;
+  const cuadreGeneralMXN = porCuenta.reduce((a,b) => {
+    const r = reportados[b.cuenta_id];
+    const repNum = (r !== '' && r !== undefined && r !== null) ? parseFloat(r) : null;
+    if (repNum === null || isNaN(repNum)) return a;
+    algunReportado = true;
+    const tc = Number(monedas[b.moneda]?.tc_a_mxn || 1);
+    return a + (repNum - b.netoEsperado) * tc;
+  }, 0);
 
   return (
     <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',fontFamily:'var(--sans)',background:'var(--paper)',overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
@@ -643,6 +655,22 @@ const ArqueoFn = () => {
                   <div style={{fontSize:11,color:'var(--ink-3)',fontWeight:600,letterSpacing:.4,textTransform:'uppercase',marginBottom:2}}>Total esperado (MXN equiv)</div>
                   <Money amount={totalEsperadoMXN} size={20} weight={700}/>
                 </div>
+                {/* Cuadre general: netea todas las cuentas en pesos (compensa entre monedas) */}
+                {algunReportado && (() => {
+                  const abs = Math.abs(cuadreGeneralMXN);
+                  const cuadra = abs < 0.5;
+                  const color = cuadra ? 'var(--moss)' : (cuadreGeneralMXN > 0 ? 'var(--moss)' : '#b73f5e');
+                  const etiqueta = cuadra ? '✓ Cuadra en general' : (cuadreGeneralMXN > 0 ? 'Sobrante general' : 'Faltante general');
+                  return (
+                    <div style={{padding:'10px 16px',borderRadius:10,background:cuadra?'rgba(107,125,74,.1)':(cuadreGeneralMXN>0?'rgba(107,125,74,.06)':'rgba(212,83,126,.1)'),border:`1px solid ${cuadra?'var(--moss)':(cuadreGeneralMXN>0?'var(--moss)':'rgba(212,83,126,.5)')}`}}>
+                      <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.4,textTransform:'uppercase',color,marginBottom:2}}>{etiqueta}</div>
+                      <div className="num" style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:700,color}}>
+                        {cuadra ? '$0.00' : `${cuadreGeneralMXN>0?'+':'−'}$${abs.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`}
+                        <span style={{fontSize:10,fontWeight:600,color:'var(--ink-3)',marginLeft:4}}>MXN eq.</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{flex:1}}/>
                 <Btn variant="secondary" size="md" onClick={()=>navigate('turnos/pv/'+turnoId)}>← Volver al PV</Btn>
               </div>

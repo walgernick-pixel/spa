@@ -12,6 +12,17 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Arqueo · cuadre general (netea entre monedas) + badge de lista
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo frontend (sin migración). Bump SW a v1.3.8.
+- **Caso (dueño):** Al dar cambio de USD en pesos, una cuenta queda faltante en una moneda y otra sobrante en otra; por cuenta no cuadran, pero en total sí (ej. −US$0.50 = −$8 MXN compensado con +$8 MXN del conteo manual). El arqueo solo hacía cuadre por cuenta.
+- **Cambios:**
+  - `fn-arqueo.jsx`: nuevo bloque **"Cuadre general (pesos eq.)"** en el resumen = suma de `(reportado − esperado) × tc` de TODAS las cuentas, incluido el conteo manual (esperado 0). Compensa entre monedas → muestra "Cuadra en general / Sobrante / Faltante".
+  - `fn-turnos-list.jsx`: el badge de arqueo ahora usa `(neto_reportado − neto_esperado) × tc` en vez de `diferencia`. Para cuentas normales es idéntico; para conteo manual suma lo contado → el badge refleja el cuadre general (compensa monedas). El turno #0835 pasa de "Faltó $8" a "Cuadró".
+- **Nota:** El dashboard sigue usando `diferencia` (manual = 0), así que su "ajuste arqueo" se mantiene por-cuenta/por-moneda (no netea). El neteo cross-moneda vive en el arqueo y el badge.
+
+---
+
 ## [2026-06-03] Arqueo · agregar cuenta sin ventas (conteo informativo)
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo frontend (sin migración). Bump SW a v1.3.7.
