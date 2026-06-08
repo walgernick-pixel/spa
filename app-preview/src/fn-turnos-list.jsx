@@ -728,6 +728,16 @@ const TurnoRowFn = ({t, first, pendingSync, onClick}) => {
           <ArqueoChip status={t.arqueoStatus} difMxn={t.arqueoDifMxn || 0}
             onVerArqueo={(e)=>{ e.stopPropagation(); navigate('turnos/arqueo/' + t.id); }}/>
         )}
+        {/* Confirmación de escritorio (cadena de custodia) */}
+        {t.estado === 'cerrado' && t.arqueoStatus && t.arqueoStatus !== 'pendiente' && (
+          t.arqueo_confirmado_at ? (
+            <div title={`Confirmado en escritorio${t.arqueo_confirmado_por_nombre ? ` por ${t.arqueo_confirmado_por_nombre}` : ''} · ${new Date(t.arqueo_confirmado_at).toLocaleDateString('es-MX')}`}
+              style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'var(--moss)',background:'rgba(107,125,74,.12)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(107,125,74,.3)'}}>✓ Confirmado</div>
+          ) : (
+            <div title="Reportado por la encargada · falta confirmar en escritorio"
+              style={{marginTop:4,display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:700,color:'#b07228',background:'rgba(176,114,40,.1)',padding:'2px 7px',borderRadius:4,border:'1px solid rgba(176,114,40,.3)'}}>⏳ Por confirmar</div>
+          )
+        )}
       </div>
     </div>
   );

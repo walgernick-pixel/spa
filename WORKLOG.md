@@ -12,6 +12,19 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-03] Turnos · confirmación de arqueo en escritorio (cadena de custodia)
+
+- **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Migración 31 YA aplicada en Supabase. Frontend + bump SW a v1.3.6.
+- **Petición (dueño):** Además del arqueo de la encargada, un paso de "Confirmar arqueo" cuando el dinero llega al escritorio. Acordado: confirmación SIMPLE (no segundo conteo) a nivel turno, todas las cuentas, permiso nuevo, admin incluido. Para corregir montos se reabre el turno.
+- **Migración 31 (`supabase/31_confirmacion_arqueo.sql`):** columnas `arqueo_confirmado_at/por/notas` en `turnos`; `v_turnos_resumen` recreada exponiéndolas + `arqueo_confirmado_por_nombre`; permiso `arqueo_confirmar` (admin true, resto false).
+- **Frontend:**
+  - `fn-perfiles.jsx`: `arqueo_confirmar` agregado al catálogo (módulo PV/turnos).
+  - `fn-arqueo.jsx`: sección "Confirmación de caja (escritorio)" en turnos cerrados — con permiso muestra nota opcional + botón "Confirmar arqueo"; sin permiso muestra "Pendiente de confirmar"; ya confirmado muestra quién/cuándo + nota. `confirmarArqueo()` hace update a turnos (at/por/notas). Lookup del nombre del confirmador.
+  - `fn-turnos-list.jsx`: badge "⏳ Por confirmar" / "✓ Confirmado" junto al chip de arqueo.
+- **Pendiente:** probar en preview con un rol no-admin que tenga el permiso. (Opcional futuro: que el dashboard distinga confirmados.)
+
+---
+
 ## [2026-06-03] Dashboard · flujo de caja cuadra con el arqueo (comisión por pata)
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Frontend + bump SW a v1.3.5.

@@ -20,6 +20,7 @@ const CATALOGO_PERMISOS = [
     {id:'turnos_eliminar',       label:'Eliminar turno completo'},
     {id:'turnos_editar_encargado', label:'Cambiar al encargado de un turno'},
     {id:'arqueo_eliminar',       label:'Eliminar arqueo individual'},
+    {id:'arqueo_confirmar',      label:'Confirmar arqueo en escritorio (recepción de caja)'},
   ]},
   { id:'gastos', label:'Gastos', permisos: [
     {id:'gastos_ver',            label:'Ver listado de gastos'},
