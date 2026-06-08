@@ -20,6 +20,9 @@ const ArqueoFn = () => {
   const [loading, setLoading]       = React.useState(true);
   const [saving, setSaving]         = React.useState(false);
   const [cerrando, setCerrando]     = React.useState(false);
+  const [confirmando, setConfirmando] = React.useState(false);
+  const [notaConfirm, setNotaConfirm] = React.useState('');
+  const [confirmadorNombre, setConfirmadorNombre] = React.useState(null);
 
   const cargar = React.useCallback(async () => {
     if (!turnoId) { setLoading(false); return; }
@@ -348,6 +351,40 @@ const ArqueoFn = () => {
     navigate('turnos');
   };
 
+  // Confirmar arqueo en escritorio (cadena de custodia). Confirmación simple:
+  // guarda quién/cuándo + nota opcional. No recuenta; para corregir montos se
+  // reabre el turno. Requiere permiso arqueo_confirmar.
+  const confirmarArqueo = async () => {
+    if (!window.can || !window.can('arqueo_confirmar')) return notify('No tienes permiso para confirmar arqueos', 'err');
+    if (!confirmar('¿Confirmar la recepción del arqueo de este turno en el escritorio?')) return;
+    setConfirmando(true);
+    let uid = window.__auth?.perfil?.id || null;
+    try { const { data: u } = await sb.auth.getUser(); if (u?.user?.id) uid = u.user.id; } catch (_) {}
+    const patch = {
+      arqueo_confirmado_at: new Date().toISOString(),
+      arqueo_confirmado_por: uid,
+      arqueo_confirmado_notas: notaConfirm.trim() || null,
+    };
+    const { error, fromQueue } = await window.sbUpdate('turnos', patch, { id: turnoId });
+    setConfirmando(false);
+    if (error) return notify('Error al confirmar: ' + error.message, 'err');
+    notify(fromQueue ? 'Arqueo confirmado (offline · se sincroniza al volver) ✓' : 'Arqueo confirmado ✓');
+    setConfirmadorNombre(window.__auth?.perfil?.nombre_display || 'tú');
+    setTurno(prev => prev ? { ...prev, ...patch } : prev);
+  };
+
+  // Nombre de quién confirmó (para mostrar en turnos ya confirmados)
+  React.useEffect(() => {
+    const pid = turno?.arqueo_confirmado_por;
+    if (!pid) { setConfirmadorNombre(null); return; }
+    if (window.__auth?.perfil?.id === pid) { setConfirmadorNombre(window.__auth.perfil.nombre_display || 'tú'); return; }
+    let alive = true;
+    sb.from('perfiles').select('nombre_display').eq('id', pid).maybeSingle()
+      .then(({ data }) => { if (alive) setConfirmadorNombre(data?.nombre_display || null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [turno?.arqueo_confirmado_por]);
+
   // Totales para el recibo imprimible (MXN equivalente)
   // DEBE ir antes del early return (rules of hooks)
   const totalesRecibo = React.useMemo(() => {
@@ -571,6 +608,43 @@ const ArqueoFn = () => {
                 <Btn variant="ghost" size="sm" icon="trash" onClick={eliminarTurnoCompleto} style={{color:'#b73f5e'}}>Eliminar turno</Btn>
               )}
             </div>
+          )}
+
+          {/* Confirmación de caja (escritorio) — cadena de custodia */}
+          {turno.estado === 'cerrado' && porCuenta.length > 0 && (
+            turno.arqueo_confirmado_at ? (
+              <div style={{marginTop:12,padding:'14px 18px',background:'rgba(107,125,74,.08)',border:'1px solid var(--moss)',borderRadius:10,display:'flex',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+                <Icon name="check" size={15} color="var(--moss)"/>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontSize:12.5,fontWeight:700,color:'var(--moss)'}}>Arqueo confirmado en escritorio</div>
+                  <div style={{fontSize:11.5,color:'var(--ink-2)',marginTop:2}}>
+                    {confirmadorNombre ? `Por ${confirmadorNombre}` : 'Confirmado'} · {new Date(turno.arqueo_confirmado_at).toLocaleString('es-MX',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+                  </div>
+                  {turno.arqueo_confirmado_notas && (
+                    <div style={{fontSize:11.5,color:'var(--ink-2)',marginTop:4,fontStyle:'italic'}}>“{turno.arqueo_confirmado_notas}”</div>
+                  )}
+                </div>
+              </div>
+            ) : (window.can && window.can('arqueo_confirmar')) ? (
+              <div style={{marginTop:12,padding:'16px 18px',background:'rgba(176,114,40,.06)',border:'1.5px dashed var(--amber)',borderRadius:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink-0)',marginBottom:3}}>Confirmación de caja (escritorio)</div>
+                <div style={{fontSize:11.5,color:'var(--ink-2)',lineHeight:1.5,marginBottom:10}}>
+                  Confirma que recibiste el dinero de este turno. Si algo no cuadró, déjalo en la nota (para corregir montos, reabre el turno).
+                </div>
+                <textarea value={notaConfirm} onChange={e=>setNotaConfirm(e.target.value)} rows={2} placeholder="Nota opcional (ej. llegaron $200 menos, hablar con la encargada)"
+                  style={{width:'100%',padding:'10px 12px',fontSize:13,border:'1px solid var(--line-1)',borderRadius:8,background:'var(--paper)',fontFamily:'inherit',color:'var(--ink-1)',boxSizing:'border-box',resize:'vertical',minHeight:54,marginBottom:10}}/>
+                <div style={{display:'flex',justifyContent:'flex-end'}}>
+                  <Btn variant="moss" size="md" icon="check" onClick={confirmarArqueo} disabled={confirmando}>
+                    {confirmando ? 'Confirmando…' : 'Confirmar arqueo'}
+                  </Btn>
+                </div>
+              </div>
+            ) : (
+              <div style={{marginTop:12,padding:'12px 16px',background:'var(--paper-sunk)',border:'1px solid var(--line-1)',borderRadius:10,display:'flex',alignItems:'center',gap:10,fontSize:12,color:'var(--ink-3)'}}>
+                <Icon name="clock" size={13} color="var(--amber)"/>
+                Pendiente de confirmar en el escritorio.
+              </div>
+            )
           )}
         </div>
       </div>
