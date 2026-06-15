@@ -12,6 +12,21 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-15] Offline · reforzar flujo: fallas visibles y no silenciosas
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.1.
+- **Petición (dueño):** "esto pasó porque estuvo offline, refuerza el flujo de trabajo". El problema de fondo: el flujo offline fallaba en SILENCIO → quedaban bombas de tiempo (turno fantasma).
+- **Debilidades atacadas:**
+  1. **Fallas invisibles:** `getPendingCount` excluye `failed`, así que el badge "⟳ Sincronizando" nunca mostraba las ops que agotaron sus 5 reintentos. El usuario no se enteraba de que algo no se guardó.
+  2. **Conflicto tragado en silencio:** en `_syncOne`, un error `23505` (justo lo que produce el índice único de "1 turno abierto") se trataba como éxito y borraba la op sin avisar → el turno abierto offline desaparecía sin rastro ni mensaje.
+- **Cambios (`offline.jsx`):**
+  - Nuevo **badge rojo "⚠️ N sin guardar"** (`#offline-failed-badge`), visible online u offline si hay ops `failed`. Tocarlo lista las ops y ofrece descartarlas (`purgeFailed`). Se reposiciona el badge de sync para no encimarse.
+  - `_syncOne`: para `insert` en `turnos` con 23505, **avisa explícitamente** ("un turno que abriste sin conexión no se creó porque ya había otro abierto…") en vez de tragarlo. Para otras tablas se mantiene el comportamiento (23505 = ya existe = OK).
+  - `_syncOne`: cuando una op pasa a `failed`, dispara un **toast de error** + `_notifyQueueChange()` (antes era 100% silencioso) para que aparezca el badge al instante.
+- **Pendiente / opcional:** endurecer `abrirTurno` offline (pre-chequeo local de turno abierto) se dejó fuera a propósito — con caché stale podría bloquear en falso un turno legítimo. A discutir con el dueño.
+
+---
+
 ## [2026-06-15] Offline · turno "fantasma" por op 'failed' en la cola
 
 - **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.0.

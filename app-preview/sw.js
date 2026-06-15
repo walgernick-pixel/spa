@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.4.0';  // No renderizar ops 'failed' de la cola (turno fantasma) + purgeFailed en Recargar
+const VERSION    = 'v1.4.1';  // Refuerzo offline: badge rojo "sin guardar" + avisos de falla/conflicto no silenciosos
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;

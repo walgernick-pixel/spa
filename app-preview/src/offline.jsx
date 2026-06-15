@@ -199,6 +199,33 @@ const _injectBanner = () => {
   badge.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9997;padding:6px 11px;background:#3a5d3a;color:#faf7f1;font:600 11px/1.3 Geist,sans-serif;letter-spacing:.3px;border-radius:999px;display:none;box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:default;';
   badge.title = 'Operaciones encoladas que se sincronizarán al volver internet';
   document.body.appendChild(badge);
+
+  // Badge de FALLAS: visible siempre (online u offline) si hay ops que
+  // agotaron sus reintentos. Convierte la falla silenciosa en algo visible
+  // y accionable — tócalo para revisar/descartar (evita el "turno fantasma").
+  const fbadge = document.createElement('div');
+  fbadge.id = 'offline-failed-badge';
+  fbadge.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9999;padding:6px 11px;background:#9b3b2a;color:#fff;font:700 11px/1.3 Geist,sans-serif;letter-spacing:.3px;border-radius:999px;display:none;box-shadow:0 4px 12px rgba(0,0,0,.22);cursor:pointer;';
+  fbadge.title = 'Operaciones que no se pudieron guardar — toca para resolver';
+  fbadge.onclick = async () => {
+    try {
+      const failed = await getFailed();
+      if (failed.length === 0) { _updateBanner(); return; }
+      const resumen = failed.map(f => `· ${f.op} ${f.table}`).slice(0, 6).join('\n');
+      const ok = window.confirm(
+        `${failed.length} operación(es) no se pudieron guardar tras varios intentos:\n\n${resumen}\n\n` +
+        `Suele pasar con algo capturado sin conexión que ya no aplica (p.ej. un turno abierto offline ` +
+        `cuando ya había otro abierto). Si las dejas, pueden aparecer como un registro "fantasma" solo en este dispositivo.\n\n` +
+        `¿Descartarlas?`
+      );
+      if (ok) {
+        const n = await purgeFailed();
+        window.notify && window.notify(`${n} operación(es) con error descartada(s)`, 'ok');
+        _updateBanner();
+      }
+    } catch (_) {}
+  };
+  document.body.appendChild(fbadge);
 };
 
 // Track cuándo nos pusimos offline para alertar tras 30 min con pendientes
@@ -233,12 +260,27 @@ const _updateBanner = async () => {
     }
   }
 
-  // Badge (online con pendientes pendientes = sincronizando)
+  // Badge de fallas (siempre visible si hay ops que agotaron reintentos)
+  let failedCount = 0;
+  try { failedCount = (await getFailed()).length; } catch (_) {}
+  const fbadge = document.getElementById('offline-failed-badge');
+  if (fbadge) {
+    if (failedCount > 0) {
+      fbadge.style.display = 'block';
+      fbadge.textContent = `⚠️ ${failedCount} sin guardar`;
+    } else {
+      fbadge.style.display = 'none';
+    }
+  }
+
+  // Badge (online con pendientes pendientes = sincronizando). Si el badge de
+  // fallas está visible, lo bajamos para no encimarse.
   if (badge) {
     if (online && pending > 0) {
       badge.style.display = 'block';
       badge.textContent = `⟳ Sincronizando ${pending}`;
       badge.style.background = '#3a5d3a';
+      badge.style.top = failedCount > 0 ? '48px' : '14px';
     } else {
       badge.style.display = 'none';
     }
@@ -404,6 +446,12 @@ const _syncOne = async (item) => {
       // turno_colaboradoras tiene unique constraint y al insertar 2x
       // el mismo colab en el turno tenemos que tolerarlo).
       if (res.error.code === '23505') {
+        // Para un turno abierto offline, 23505 = ya había otro turno abierto
+        // (índice único parcial, mig 27) → el que abriste sin conexión NO se
+        // creó. Avisar explícitamente en vez de tragarlo en silencio.
+        if (item.op === 'insert' && item.table === 'turnos') {
+          window.notify && window.notify('Un turno que abriste sin conexión no se creó porque ya había otro turno abierto. Si capturaste servicios ahí, vuelve a registrarlos en el turno correcto.', 'warn');
+        }
         await _queueDelete(item.id);
         console.log('[offline] sync OK (ya existía, 23505):', item.op, item.table);
         return true;
@@ -418,6 +466,12 @@ const _syncOne = async (item) => {
     item.error = String(e.message || e);
     item.status = item.retries >= 5 ? 'failed' : 'pending';
     await _queuePut(item);
+    // Si agotó reintentos, avisar fuerte (antes era 100% silencioso) y refrescar
+    // badges para que aparezca el indicador rojo "sin guardar".
+    if (item.status === 'failed') {
+      window.notify && window.notify(`No se pudo guardar una operación (${item.op} ${item.table}) tras varios intentos. Toca el aviso rojo "sin guardar" para resolverlo.`, 'err');
+      _notifyQueueChange();
+    }
     console.warn('[offline] sync falló:', item.op, item.table, '·', item.error, '(retry', item.retries+')');
     return false;
   }
