@@ -12,6 +12,17 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-15] Offline · turno "fantasma" por op 'failed' en la cola
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.0.
+- **Caso (dueño):** El turno "abierto" del 9-jun aparecía SOLO en la tablet (no en iPhone ni web), y sobrevivía a cerrar/reabrir la app y al botón ↻ Recargar. En el servidor no hay ningún turno abierto.
+- **Causa raíz:** `findQueuedAll`/`findQueuedById` (offline.jsx) devolvían TODAS las ops `insert` encoladas, **incluidas las marcadas `failed`**. Una op se marca `failed` tras 5 reintentos y ya no sincroniza nunca. Un turno abierto offline en la tablet chocó con el índice único de "1 turno abierto a la vez" (mig 27) → quedó `failed` → pero `mergeQueuedTurnos` lo seguía mezclando como turno `_pending` abierto. Inmune a recargar (la cola vive en IndexedDB; el merge lo re-agrega cada carga). Invisible en otros dispositivos (cola local). Encima, `getPendingCount` excluye `failed`, así que ni el badge "⟳ Sync pendiente" lo mostraba.
+- **Fix (`offline.jsx`):** `findQueuedAll` y `findQueuedById` ahora filtran `status !== 'failed'` → las ops fallidas dejan de renderizarse como pendientes (turno/venta fantasma desaparece). Nuevo `purgeFailed()` (borra las `failed` de IndexedDB) expuesto en `window`.
+- **Fix (`db.jsx`):** `reloadApp` (botón ↻ Recargar) ahora detecta ops `failed` y ofrece descartarlas con confirmación, sin tocar las `pending` reales. Permite limpiar una cola atorada desde la app, sin DevTools.
+- **Workaround inmediato (antes de que llegue este código a la tablet):** en la tablet, borrar datos del sitio / reinstalar la PWA (limpia IndexedDB y baja código fresco). Verificar antes que no haya capturas legítimas pendientes ("⟳ Sync pendiente").
+
+---
+
 ## [2026-06-15] Turnos · refresco de lista para evitar turno "abierto" stale
 
 - **Estado:** Branch `claude/funny-cannon-69z13s`. Solo frontend (sin migración). Bump SW a v1.3.9.

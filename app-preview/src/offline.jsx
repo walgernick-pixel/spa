@@ -332,16 +332,22 @@ const enqueue = async ({op, table, payload = null, filter = null}) => {
 // en Supabase. Solo busca en operaciones 'insert'.
 const findQueuedById = async (table, id) => {
   const all = await _queueAll();
-  const m = all.find(x => x.op === 'insert' && x.table === table && x.payload && x.payload.id === id);
+  // Excluir 'failed': una op que falló 5 veces no va a sincronizar nunca;
+  // no debe servir como fuente "optimista" de un registro (turno fantasma).
+  const m = all.find(x => x.op === 'insert' && x.table === table && x.status !== 'failed' && x.payload && x.payload.id === id);
   return m ? m.payload : null;
 };
 
 // Buscar TODOS los registros encolados de una tabla que cumplan un predicate.
 // Útil para mostrar ventas/pagos encolados que aún no están en Supabase.
+// Excluye 'failed': esas ops ya agotaron sus reintentos y no van a sincronizar,
+// así que no deben renderizarse como registros "pendientes" (si se mostraran,
+// un turno abierto offline que chocó con el índice único quedaría como fantasma
+// permanente — visible solo en ese dispositivo, inmune a recargar/reabrir).
 const findQueuedAll = async (table, predicate) => {
   const all = await _queueAll();
   return all
-    .filter(x => x.op === 'insert' && x.table === table && x.payload && predicate(x.payload))
+    .filter(x => x.op === 'insert' && x.table === table && x.status !== 'failed' && x.payload && predicate(x.payload))
     .map(x => x.payload);
 };
 
@@ -357,6 +363,17 @@ const getPending = async () => {
 
 const getFailed = async () => {
   return (await _queueAll()).filter(x => x.status === 'failed');
+};
+
+// Descartar las operaciones que quedaron en 'failed' (agotaron 5 reintentos).
+// Útil para limpiar una cola atorada sin DevTools (ej. un turno abierto offline
+// que chocó con el índice único de "1 turno abierto" y nunca pudo sincronizar).
+// Devuelve cuántas borró.
+const purgeFailed = async () => {
+  const failed = await getFailed();
+  for (const item of failed) { await _queueDelete(item.id); }
+  if (failed.length > 0) _notifyQueueChange();
+  return failed.length;
 };
 
 // Sincronizar UNA operación. Retorna true si OK, false si falló.
@@ -624,7 +641,7 @@ setTimeout(() => { drainQueue(); }, 3000);
 Object.assign(window, {
   leerCatalogo, consultarCatalogo, refrescarCatalogos,
   // Queue + sync
-  enqueue, drainQueue, getPendingCount, getPending, getFailed,
+  enqueue, drainQueue, getPendingCount, getPending, getFailed, purgeFailed,
   findQueuedById, findQueuedAll, onQueueChange,
   sbInsert, sbUpdate, sbDelete, sbUpsert, genUUID,
   // Snapshot de turno
