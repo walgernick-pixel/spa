@@ -176,8 +176,11 @@ const TurnosListFn = () => {
     return window.onQueueChange(refreshPending);
   }, [refreshPending]);
 
-  const cargar = React.useCallback(async () => {
-    setLoading(true);
+  const cargar = React.useCallback(async (opts = {}) => {
+    // Refresco en background (foco/online/polling): no mostramos el estado
+    // "Cargando" ni vaciamos la lista — solo actualizamos cuando llegan datos.
+    const silent = !!opts.silent;
+    if (!silent) setLoading(true);
 
     // Helper: mezcla turnos encolados (recién creados offline) con la
     // lista. Sin esto, un turno que la encargada abre offline no aparece
@@ -234,7 +237,7 @@ const TurnosListFn = () => {
       if (/network|fetch|failed to fetch|abort|connection/i.test(error.message || '')) {
         return fallbackToCache();
       }
-      notify('Error cargando turnos: '+error.message, 'err');
+      if (!silent) notify('Error cargando turnos: '+error.message, 'err');
       setLoading(false);
       return;
     }
@@ -326,6 +329,31 @@ const TurnosListFn = () => {
   }, []);
 
   React.useEffect(() => { cargar(); }, [cargar]);
+
+  // Mantener la lista fresca contra el servidor. Sin esto, una tablet que
+  // dejó la lista abierta no se entera de que otro dispositivo cerró el
+  // turno y lo sigue mostrando "abierto" (solo puede haber 1 abierto a la
+  // vez → el servidor es la verdad). Refrescamos en silencio al:
+  //   · volver el foco / hacerse visible la pestaña
+  //   · recuperar internet
+  //   · cada 45s mientras la pestaña esté visible y online (polling suave)
+  React.useEffect(() => {
+    const refrescar = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        cargar({silent: true});
+      }
+    };
+    document.addEventListener('visibilitychange', refrescar);
+    window.addEventListener('focus', refrescar);
+    window.addEventListener('online', refrescar);
+    const id = setInterval(refrescar, 45000);
+    return () => {
+      document.removeEventListener('visibilitychange', refrescar);
+      window.removeEventListener('focus', refrescar);
+      window.removeEventListener('online', refrescar);
+      clearInterval(id);
+    };
+  }, [cargar]);
 
   const rango = React.useMemo(
     () => rangoTurnos(preset, customDesde, customHasta),

@@ -12,6 +12,18 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-15] Turnos · refresco de lista para evitar turno "abierto" stale
+
+- **Estado:** Branch `claude/funny-cannon-69z13s`. Solo frontend (sin migración). Bump SW a v1.3.9.
+- **Caso (dueño):** Laura y Tomasa veían un turno del 9-jun como **abierto**, pero en el servidor estaba **cerrado** (folio #844, cerrado el mismo 9-jun 16:47). No podían borrar ventas (4 colabs con comisión ya pagada → bloqueadas con 🔒) ni cerrarlo (operaban sobre copia local vieja). Al dueño/admin no le aparecía porque (a) ya estaba cerrado y (b) el filtro default "Esta semana" (hoy lun 15-jun) deja fuera al 9-jun.
+- **Diagnóstico:** La lista de turnos solo se cargaba al montar. El `visibilitychange` global (db.jsx) solo recarga si el tab estuvo oculto >5min, y el evento `online` (offline.jsx) solo refresca catálogos, no la lista. Una tablet que dejaba la lista abierta no se enteraba de que otro dispositivo cerró el turno.
+- **Cambio (`fn-turnos-list.jsx`):**
+  - `cargar()` acepta `{silent:true}` — refresco en background sin parpadear "Cargando" ni vaciar la lista; suprime el toast de error en silencioso.
+  - Nuevo `useEffect`: refresca en silencio al recuperar foco/visibilidad, al volver internet (`online`), y cada 45s mientras la pestaña esté visible y online (polling suave). Solo puede haber 1 turno abierto → el servidor es la verdad.
+- **Nota:** No se tocó el PV; al navegar a un turno ya se lee del servidor primero (online). Posible follow-up: mismo refresco-en-foco dentro del PV.
+
+---
+
 ## [2026-06-03] Arqueo · cuadre general (netea entre monedas) + badge de lista
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo frontend (sin migración). Bump SW a v1.3.8.
