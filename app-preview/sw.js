@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.4.1';  // Refuerzo offline: badge rojo "sin guardar" + avisos de falla/conflicto no silenciosos
+const VERSION    = 'v1.4.2';  // Abrir turno offline valida contra estado local (no abrir duplicado que se atora)
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;

@@ -397,13 +397,23 @@ const TurnosListFn = () => {
     abriendoRef.current = true;
     setAbriendo(true);
     try {
-      // Validar: no puede haber otro turno abierto. Solo si hay net —
-      // offline confiamos en que el usuario sabe lo que hace y que el
-      // índice único atrapará el caso al sincronizar.
+      // Validar: no puede haber otro turno abierto.
       if (navigator.onLine) {
         const { data: abiertos } = await sb.from('turnos').select('id,folio').eq('estado','abierto').limit(1);
         if (abiertos && abiertos.length > 0) {
           notify(`Ya hay un turno abierto (${abiertos[0].folio || '#'+abiertos[0].id.slice(0,6)}). Ciérralo antes de abrir otro.`, 'warn');
+          return;
+        }
+      } else {
+        // Offline: antes confiábamos ciegamente en el usuario y dejábamos que
+        // el índice único atrapara el duplicado al sincronizar — pero ese
+        // duplicado se quedaba atorado en la cola como turno "fantasma". Ahora
+        // validamos contra el estado LOCAL (la lista en pantalla ya mezcla la
+        // lista cacheada del servidor + los turnos encolados sin sincronizar),
+        // así no se abre un segundo turno que chocará al volver internet.
+        const abiertoLocal = (turnos || []).find(t => t.estado === 'abierto');
+        if (abiertoLocal) {
+          notify(`Ya hay un turno abierto (${abiertoLocal.folio ? '#'+String(abiertoLocal.folio).padStart(4,'0') : 'sin conexión'}). Ciérralo antes de abrir otro.`, 'warn');
           return;
         }
       }

@@ -12,6 +12,16 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-15] Offline · prevenir turno duplicado abierto sin conexión
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.2.
+- **Petición (dueño):** Que puedan trabajar offline a gusto (caso real: 2 h sin internet) sin que se generen turnos fantasma. No se sabe si había turno abierto al irse el internet o si lo abrieron durante el corte.
+- **Gatillo identificado:** `abrirTurno` solo validaba "¿ya hay turno abierto?" **si había internet**. Offline se saltaba el chequeo → se podía abrir un 2º turno que al sincronizar choca con el índice único de "1 turno abierto" (mig 27) → queda atorado en la cola como fantasma.
+- **Fix (`fn-turnos-list.jsx`):** rama `else` (offline) en `abrirTurno`: valida contra el estado LOCAL (`turnos` ya mezcla la lista cacheada del servidor + los turnos encolados sin sincronizar). Si hay uno abierto, bloquea con aviso. Confiable porque el auto-refresco mantiene la lista fresca hasta el momento en que se cae la red (justo el escenario del corte).
+- **Cobertura offline completa (este PR):** abrir turno (validado online y offline), capturar/editar/borrar ventas, marcar pago/firma, cerrar turno → todo encola con update optimista; al volver internet drena solo (online + polling 30s); fallas visibles (badge rojo) y no silenciosas; ops fallidas no se renderizan; lista se auto-refresca.
+
+---
+
 ## [2026-06-15] Offline · reforzar flujo: fallas visibles y no silenciosas
 
 - **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.1.
