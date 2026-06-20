@@ -473,6 +473,17 @@ const repararTurnoHuerfano = async (turno) => {
     if (res.error && res.error.code !== '23505') {
       return {ok:false, error: res.error.message};
     }
+    // 1b) Quitar el insert encolado de ESTE turno (ya lo creamos arriba). Si lo
+    //     dejáramos, al drenar daría 23505 y dispararía el aviso de conflicto
+    //     "no se creó porque ya había otro abierto" — falso, porque sí existe.
+    try {
+      const all = await _queueAll();
+      for (const it of all) {
+        if (it.op === 'insert' && it.table === 'turnos' && it.payload && it.payload.id === turno.id) {
+          await _queueDelete(it.id);
+        }
+      }
+    } catch (_) {}
     // 2) Reactivar las ops ligadas que habían quedado fallidas por la FK.
     await reactivarOpsDeTurno(turno.id);
     // 3) Subir lo capturado.

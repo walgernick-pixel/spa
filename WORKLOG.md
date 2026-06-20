@@ -12,6 +12,17 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-20] Offline · fix aviso falso de conflicto al reparar + auditoría
+
+- **Estado:** Branch nuevo (post-merge #90). Solo frontend. Bump SW a v1.4.4.
+- **Revisión pedida por el dueño** ("revisa antes de cerrar"). Auditado el flujo offline completo:
+  - Abrir turno offline: valida contra estado local → no abre duplicado. ✓
+  - `findQueuedAll/ById` excluyen 'failed' → no se dibujan fantasmas; en uso offline normal el insert queda 'pending' (no falla) hasta sincronizar, así que NO se ocultan turnos legítimos (solo los de conflicto real). ✓
+  - Disparador de reparación (`dataFromSnapshot && serverSaysMissing && online`) es conservador: NO se dispara en una reconexión normal (ahí el turno viene de la cola, no del snapshot), evitando reparaciones falsas. ✓
+- **Bug encontrado y corregido:** `repararTurnoHuerfano` reactivaba el insert encolado del propio turno; al drenar daba 23505 → disparaba el aviso "no se creó porque ya había otro abierto" (falso, porque la reparación sí lo creó). Fix: tras recrear el turno, se borra el insert encolado redundante antes de reactivar/drenar.
+
+---
+
 ## [2026-06-20] Offline · auto-reparación de turno huérfano (FK)
 
 - **Estado:** Branch `claude/funny-cannon-69z13s` (PR #90). Solo frontend. Bump SW a v1.4.3.
