@@ -118,6 +118,27 @@ const usePersistedState = (key, initialValue) => {
 // el usuario esté tipeando en una forma sin guardar. El confirm
 // previene clicks accidentales en pleno trabajo.
 const reloadApp = async () => {
+  // Ofrecer descartar operaciones que quedaron con error: tras 5 reintentos
+  // ya no van a sincronizar, y si se quedan pueden dejar un registro "fantasma"
+  // (ej. un turno abierto offline que chocó con el índice único) visible solo
+  // en este dispositivo e inmune a recargar. Las pending normales NO se tocan.
+  try {
+    if (window.getFailed && window.purgeFailed) {
+      const failed = await window.getFailed();
+      if (failed.length > 0) {
+        const ok = window.confirm(
+          `Hay ${failed.length} operación(es) que no se pudieron guardar tras varios intentos ` +
+          `(p.ej. un turno que se abrió sin conexión y ya no aplica).\n\n` +
+          `Esto puede dejar un turno o servicio "fantasma" que solo aparece en este dispositivo.\n\n` +
+          `¿Descartarlas? (Las capturas que SÍ están pendientes de subir no se tocan.)`
+        );
+        if (ok) {
+          const n = await window.purgeFailed();
+          window.notify && window.notify(`${n} operación(es) con error descartada(s)`, 'ok');
+        }
+      }
+    }
+  } catch (_) {}
   let pending = 0;
   try { if (window.getPendingCount) pending = await window.getPendingCount(); } catch (_) {}
   if (pending > 0) {

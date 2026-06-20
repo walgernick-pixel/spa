@@ -12,6 +12,65 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-20] Offline · auto-reparación de turno huérfano (FK)
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (PR #90). Solo frontend. Bump SW a v1.4.3.
+- **Caso (dueño):** 2º corte de internet → se duplicó el turno y al marcar pagar sale error `insert or update ... violates foreign key constraint`. Verificado en server: NO hay turno abierto y 0 huérfanos en BD → el turno (con sus ventas) vive SOLO en la tablet; su insert offline se perdió al chocar con "1 turno abierto", así que `turno_colaboradoras`/ventas apuntan a un `turno_id` inexistente en el server. El dueño pidió repararlo **sin borrar ni recapturar**.
+- **Fix (`offline.jsx` + `fn-pv.jsx`):**
+  - `repararTurnoHuerfano(turno)`: recrea el turno en el server con su **mismo id** (folio lo asigna el server; estado tal cual). Tolera 23505. Luego `reactivarOpsDeTurno` (vuelve a 'pending' las ventas/colabs/pagos ligados que quedaron 'failed' por la FK) y `drainQueue` para subir lo capturado.
+  - `fn-pv.jsx` `cargar()`: detecta `serverSaysMissing` (PGRST116 = .single() sin filas, ≠ error de red). Si el turno vino del **snapshot** pero el server dice que no existe y hay conexión → corre la reparación automáticamente al abrir el PV. Sin borrar ni recapturar.
+- **Para el usuario:** en la tablet, cargar el código nuevo SIN borrar datos (Resetear app / aceptar "nueva versión" — conserva IndexedDB con snapshot+cola), abrir el turno atorado → se auto-repara y sube lo capturado.
+
+---
+
+## [2026-06-15] Offline · prevenir turno duplicado abierto sin conexión
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.2.
+- **Petición (dueño):** Que puedan trabajar offline a gusto (caso real: 2 h sin internet) sin que se generen turnos fantasma. No se sabe si había turno abierto al irse el internet o si lo abrieron durante el corte.
+- **Gatillo identificado:** `abrirTurno` solo validaba "¿ya hay turno abierto?" **si había internet**. Offline se saltaba el chequeo → se podía abrir un 2º turno que al sincronizar choca con el índice único de "1 turno abierto" (mig 27) → queda atorado en la cola como fantasma.
+- **Fix (`fn-turnos-list.jsx`):** rama `else` (offline) en `abrirTurno`: valida contra el estado LOCAL (`turnos` ya mezcla la lista cacheada del servidor + los turnos encolados sin sincronizar). Si hay uno abierto, bloquea con aviso. Confiable porque el auto-refresco mantiene la lista fresca hasta el momento en que se cae la red (justo el escenario del corte).
+- **Cobertura offline completa (este PR):** abrir turno (validado online y offline), capturar/editar/borrar ventas, marcar pago/firma, cerrar turno → todo encola con update optimista; al volver internet drena solo (online + polling 30s); fallas visibles (badge rojo) y no silenciosas; ops fallidas no se renderizan; lista se auto-refresca.
+
+---
+
+## [2026-06-15] Offline · reforzar flujo: fallas visibles y no silenciosas
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.1.
+- **Petición (dueño):** "esto pasó porque estuvo offline, refuerza el flujo de trabajo". El problema de fondo: el flujo offline fallaba en SILENCIO → quedaban bombas de tiempo (turno fantasma).
+- **Debilidades atacadas:**
+  1. **Fallas invisibles:** `getPendingCount` excluye `failed`, así que el badge "⟳ Sincronizando" nunca mostraba las ops que agotaron sus 5 reintentos. El usuario no se enteraba de que algo no se guardó.
+  2. **Conflicto tragado en silencio:** en `_syncOne`, un error `23505` (justo lo que produce el índice único de "1 turno abierto") se trataba como éxito y borraba la op sin avisar → el turno abierto offline desaparecía sin rastro ni mensaje.
+- **Cambios (`offline.jsx`):**
+  - Nuevo **badge rojo "⚠️ N sin guardar"** (`#offline-failed-badge`), visible online u offline si hay ops `failed`. Tocarlo lista las ops y ofrece descartarlas (`purgeFailed`). Se reposiciona el badge de sync para no encimarse.
+  - `_syncOne`: para `insert` en `turnos` con 23505, **avisa explícitamente** ("un turno que abriste sin conexión no se creó porque ya había otro abierto…") en vez de tragarlo. Para otras tablas se mantiene el comportamiento (23505 = ya existe = OK).
+  - `_syncOne`: cuando una op pasa a `failed`, dispara un **toast de error** + `_notifyQueueChange()` (antes era 100% silencioso) para que aparezca el badge al instante.
+- **Pendiente / opcional:** endurecer `abrirTurno` offline (pre-chequeo local de turno abierto) se dejó fuera a propósito — con caché stale podría bloquear en falso un turno legítimo. A discutir con el dueño.
+
+---
+
+## [2026-06-15] Offline · turno "fantasma" por op 'failed' en la cola
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.0.
+- **Caso (dueño):** El turno "abierto" del 9-jun aparecía SOLO en la tablet (no en iPhone ni web), y sobrevivía a cerrar/reabrir la app y al botón ↻ Recargar. En el servidor no hay ningún turno abierto.
+- **Causa raíz:** `findQueuedAll`/`findQueuedById` (offline.jsx) devolvían TODAS las ops `insert` encoladas, **incluidas las marcadas `failed`**. Una op se marca `failed` tras 5 reintentos y ya no sincroniza nunca. Un turno abierto offline en la tablet chocó con el índice único de "1 turno abierto a la vez" (mig 27) → quedó `failed` → pero `mergeQueuedTurnos` lo seguía mezclando como turno `_pending` abierto. Inmune a recargar (la cola vive en IndexedDB; el merge lo re-agrega cada carga). Invisible en otros dispositivos (cola local). Encima, `getPendingCount` excluye `failed`, así que ni el badge "⟳ Sync pendiente" lo mostraba.
+- **Fix (`offline.jsx`):** `findQueuedAll` y `findQueuedById` ahora filtran `status !== 'failed'` → las ops fallidas dejan de renderizarse como pendientes (turno/venta fantasma desaparece). Nuevo `purgeFailed()` (borra las `failed` de IndexedDB) expuesto en `window`.
+- **Fix (`db.jsx`):** `reloadApp` (botón ↻ Recargar) ahora detecta ops `failed` y ofrece descartarlas con confirmación, sin tocar las `pending` reales. Permite limpiar una cola atorada desde la app, sin DevTools.
+- **Workaround inmediato (antes de que llegue este código a la tablet):** en la tablet, borrar datos del sitio / reinstalar la PWA (limpia IndexedDB y baja código fresco). Verificar antes que no haya capturas legítimas pendientes ("⟳ Sync pendiente").
+
+---
+
+## [2026-06-15] Turnos · refresco de lista para evitar turno "abierto" stale
+
+- **Estado:** Branch `claude/funny-cannon-69z13s`. Solo frontend (sin migración). Bump SW a v1.3.9.
+- **Caso (dueño):** Laura y Tomasa veían un turno del 9-jun como **abierto**, pero en el servidor estaba **cerrado** (folio #844, cerrado el mismo 9-jun 16:47). No podían borrar ventas (4 colabs con comisión ya pagada → bloqueadas con 🔒) ni cerrarlo (operaban sobre copia local vieja). Al dueño/admin no le aparecía porque (a) ya estaba cerrado y (b) el filtro default "Esta semana" (hoy lun 15-jun) deja fuera al 9-jun.
+- **Diagnóstico:** La lista de turnos solo se cargaba al montar. El `visibilitychange` global (db.jsx) solo recarga si el tab estuvo oculto >5min, y el evento `online` (offline.jsx) solo refresca catálogos, no la lista. Una tablet que dejaba la lista abierta no se enteraba de que otro dispositivo cerró el turno.
+- **Cambio (`fn-turnos-list.jsx`):**
+  - `cargar()` acepta `{silent:true}` — refresco en background sin parpadear "Cargando" ni vaciar la lista; suprime el toast de error en silencioso.
+  - Nuevo `useEffect`: refresca en silencio al recuperar foco/visibilidad, al volver internet (`online`), y cada 45s mientras la pestaña esté visible y online (polling suave). Solo puede haber 1 turno abierto → el servidor es la verdad.
+- **Nota:** No se tocó el PV; al navegar a un turno ya se lee del servidor primero (online). Posible follow-up: mismo refresco-en-foco dentro del PV.
+
+---
+
 ## [2026-06-03] Arqueo · cuadre general (netea entre monedas) + badge de lista
 
 - **Estado:** Branch `claude/vibrant-galileo-AHxEG`. Solo frontend (sin migración). Bump SW a v1.3.8.

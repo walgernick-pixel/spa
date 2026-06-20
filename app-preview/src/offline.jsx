@@ -199,6 +199,33 @@ const _injectBanner = () => {
   badge.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9997;padding:6px 11px;background:#3a5d3a;color:#faf7f1;font:600 11px/1.3 Geist,sans-serif;letter-spacing:.3px;border-radius:999px;display:none;box-shadow:0 4px 12px rgba(0,0,0,.18);cursor:default;';
   badge.title = 'Operaciones encoladas que se sincronizarán al volver internet';
   document.body.appendChild(badge);
+
+  // Badge de FALLAS: visible siempre (online u offline) si hay ops que
+  // agotaron sus reintentos. Convierte la falla silenciosa en algo visible
+  // y accionable — tócalo para revisar/descartar (evita el "turno fantasma").
+  const fbadge = document.createElement('div');
+  fbadge.id = 'offline-failed-badge';
+  fbadge.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9999;padding:6px 11px;background:#9b3b2a;color:#fff;font:700 11px/1.3 Geist,sans-serif;letter-spacing:.3px;border-radius:999px;display:none;box-shadow:0 4px 12px rgba(0,0,0,.22);cursor:pointer;';
+  fbadge.title = 'Operaciones que no se pudieron guardar — toca para resolver';
+  fbadge.onclick = async () => {
+    try {
+      const failed = await getFailed();
+      if (failed.length === 0) { _updateBanner(); return; }
+      const resumen = failed.map(f => `· ${f.op} ${f.table}`).slice(0, 6).join('\n');
+      const ok = window.confirm(
+        `${failed.length} operación(es) no se pudieron guardar tras varios intentos:\n\n${resumen}\n\n` +
+        `Suele pasar con algo capturado sin conexión que ya no aplica (p.ej. un turno abierto offline ` +
+        `cuando ya había otro abierto). Si las dejas, pueden aparecer como un registro "fantasma" solo en este dispositivo.\n\n` +
+        `¿Descartarlas?`
+      );
+      if (ok) {
+        const n = await purgeFailed();
+        window.notify && window.notify(`${n} operación(es) con error descartada(s)`, 'ok');
+        _updateBanner();
+      }
+    } catch (_) {}
+  };
+  document.body.appendChild(fbadge);
 };
 
 // Track cuándo nos pusimos offline para alertar tras 30 min con pendientes
@@ -233,12 +260,27 @@ const _updateBanner = async () => {
     }
   }
 
-  // Badge (online con pendientes pendientes = sincronizando)
+  // Badge de fallas (siempre visible si hay ops que agotaron reintentos)
+  let failedCount = 0;
+  try { failedCount = (await getFailed()).length; } catch (_) {}
+  const fbadge = document.getElementById('offline-failed-badge');
+  if (fbadge) {
+    if (failedCount > 0) {
+      fbadge.style.display = 'block';
+      fbadge.textContent = `⚠️ ${failedCount} sin guardar`;
+    } else {
+      fbadge.style.display = 'none';
+    }
+  }
+
+  // Badge (online con pendientes pendientes = sincronizando). Si el badge de
+  // fallas está visible, lo bajamos para no encimarse.
   if (badge) {
     if (online && pending > 0) {
       badge.style.display = 'block';
       badge.textContent = `⟳ Sincronizando ${pending}`;
       badge.style.background = '#3a5d3a';
+      badge.style.top = failedCount > 0 ? '48px' : '14px';
     } else {
       badge.style.display = 'none';
     }
@@ -332,16 +374,22 @@ const enqueue = async ({op, table, payload = null, filter = null}) => {
 // en Supabase. Solo busca en operaciones 'insert'.
 const findQueuedById = async (table, id) => {
   const all = await _queueAll();
-  const m = all.find(x => x.op === 'insert' && x.table === table && x.payload && x.payload.id === id);
+  // Excluir 'failed': una op que falló 5 veces no va a sincronizar nunca;
+  // no debe servir como fuente "optimista" de un registro (turno fantasma).
+  const m = all.find(x => x.op === 'insert' && x.table === table && x.status !== 'failed' && x.payload && x.payload.id === id);
   return m ? m.payload : null;
 };
 
 // Buscar TODOS los registros encolados de una tabla que cumplan un predicate.
 // Útil para mostrar ventas/pagos encolados que aún no están en Supabase.
+// Excluye 'failed': esas ops ya agotaron sus reintentos y no van a sincronizar,
+// así que no deben renderizarse como registros "pendientes" (si se mostraran,
+// un turno abierto offline que chocó con el índice único quedaría como fantasma
+// permanente — visible solo en ese dispositivo, inmune a recargar/reabrir).
 const findQueuedAll = async (table, predicate) => {
   const all = await _queueAll();
   return all
-    .filter(x => x.op === 'insert' && x.table === table && x.payload && predicate(x.payload))
+    .filter(x => x.op === 'insert' && x.table === table && x.status !== 'failed' && x.payload && predicate(x.payload))
     .map(x => x.payload);
 };
 
@@ -357,6 +405,82 @@ const getPending = async () => {
 
 const getFailed = async () => {
   return (await _queueAll()).filter(x => x.status === 'failed');
+};
+
+// Descartar las operaciones que quedaron en 'failed' (agotaron 5 reintentos).
+// Útil para limpiar una cola atorada sin DevTools (ej. un turno abierto offline
+// que chocó con el índice único de "1 turno abierto" y nunca pudo sincronizar).
+// Devuelve cuántas borró.
+const purgeFailed = async () => {
+  const failed = await getFailed();
+  for (const item of failed) { await _queueDelete(item.id); }
+  if (failed.length > 0) _notifyQueueChange();
+  return failed.length;
+};
+
+// Reactivar (volver a 'pending', reintentos a 0) las ops encoladas ligadas a
+// un turno. Se usa al reparar un turno huérfano: una vez recreado el turno en
+// el servidor, sus ventas/colabs/pagos que habían quedado 'failed' por la FK
+// ausente deben volver a intentarse. Incluye venta_pagos (referencian venta_id
+// de las ventas encoladas de ese turno).
+const reactivarOpsDeTurno = async (turnoId) => {
+  const all = await _queueAll();
+  // ids de ventas de este turno que estén encoladas (para sus venta_pagos)
+  const ventaIds = new Set(
+    all.filter(x => x.table === 'ventas' && x.payload && x.payload.turno_id === turnoId)
+       .map(x => x.payload.id)
+  );
+  let n = 0;
+  for (const item of all) {
+    const p = item.payload || {};
+    const f = item.filter || {};
+    const ligado =
+      p.turno_id === turnoId || f.turno_id === turnoId || p.id === turnoId ||
+      (item.table === 'venta_pagos' && ventaIds.has(p.venta_id));
+    if (ligado && item.status !== 'syncing') {
+      item.status = 'pending';
+      item.retries = 0;
+      delete item.error;
+      await _queuePut(item);
+      n++;
+    }
+  }
+  if (n > 0) _notifyQueueChange();
+  return n;
+};
+
+// Reparar un turno "huérfano": existe localmente (snapshot/cola) pero NO en el
+// servidor — su insert offline se perdió al chocar con el índice único de "1
+// turno abierto". Lo recreamos en el servidor con su MISMO id para que las
+// ventas/pagos/firmas que apuntan a él dejen de ser huérfanas (FK) y suban
+// solas. No borra ni recaptura nada. Devuelve {ok, error?}.
+const repararTurnoHuerfano = async (turno) => {
+  if (!navigator.onLine || !window.sb) return {ok:false, error:'sin conexión'};
+  if (!turno || !turno.id) return {ok:false, error:'turno sin id'};
+  try {
+    // 1) Recrear el turno con su mismo id (clave para las FK). El folio lo
+    //    asigna el servidor; estado tal cual (normalmente 'abierto').
+    const payload = {
+      id: turno.id,
+      fecha: turno.fecha,
+      hora_inicio: turno.hora_inicio || null,
+      estado: turno.estado || 'abierto',
+      encargada_id: turno.encargada_id || null,
+      abierto_por: turno.abierto_por || turno.encargada_id || null,
+    };
+    const res = await window.sb.from('turnos').insert(payload);
+    // 23505 = ya existe (carrera con otro tab) → lo tomamos como éxito.
+    if (res.error && res.error.code !== '23505') {
+      return {ok:false, error: res.error.message};
+    }
+    // 2) Reactivar las ops ligadas que habían quedado fallidas por la FK.
+    await reactivarOpsDeTurno(turno.id);
+    // 3) Subir lo capturado.
+    await drainQueue();
+    return {ok:true};
+  } catch (e) {
+    return {ok:false, error: String(e.message || e)};
+  }
 };
 
 // Sincronizar UNA operación. Retorna true si OK, false si falló.
@@ -387,6 +511,12 @@ const _syncOne = async (item) => {
       // turno_colaboradoras tiene unique constraint y al insertar 2x
       // el mismo colab en el turno tenemos que tolerarlo).
       if (res.error.code === '23505') {
+        // Para un turno abierto offline, 23505 = ya había otro turno abierto
+        // (índice único parcial, mig 27) → el que abriste sin conexión NO se
+        // creó. Avisar explícitamente en vez de tragarlo en silencio.
+        if (item.op === 'insert' && item.table === 'turnos') {
+          window.notify && window.notify('Un turno que abriste sin conexión no se creó porque ya había otro turno abierto. Si capturaste servicios ahí, vuelve a registrarlos en el turno correcto.', 'warn');
+        }
         await _queueDelete(item.id);
         console.log('[offline] sync OK (ya existía, 23505):', item.op, item.table);
         return true;
@@ -401,6 +531,12 @@ const _syncOne = async (item) => {
     item.error = String(e.message || e);
     item.status = item.retries >= 5 ? 'failed' : 'pending';
     await _queuePut(item);
+    // Si agotó reintentos, avisar fuerte (antes era 100% silencioso) y refrescar
+    // badges para que aparezca el indicador rojo "sin guardar".
+    if (item.status === 'failed') {
+      window.notify && window.notify(`No se pudo guardar una operación (${item.op} ${item.table}) tras varios intentos. Toca el aviso rojo "sin guardar" para resolverlo.`, 'err');
+      _notifyQueueChange();
+    }
     console.warn('[offline] sync falló:', item.op, item.table, '·', item.error, '(retry', item.retries+')');
     return false;
   }
@@ -624,7 +760,8 @@ setTimeout(() => { drainQueue(); }, 3000);
 Object.assign(window, {
   leerCatalogo, consultarCatalogo, refrescarCatalogos,
   // Queue + sync
-  enqueue, drainQueue, getPendingCount, getPending, getFailed,
+  enqueue, drainQueue, getPendingCount, getPending, getFailed, purgeFailed,
+  reactivarOpsDeTurno, repararTurnoHuerfano,
   findQueuedById, findQueuedAll, onQueueChange,
   sbInsert, sbUpdate, sbDelete, sbUpsert, genUUID,
   // Snapshot de turno
