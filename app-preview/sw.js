@@ -11,7 +11,7 @@
 // y limpiar caches viejos.
 // ──────────────────────────────────────────
 
-const VERSION    = 'v1.4.2';  // Abrir turno offline valida contra estado local (no abrir duplicado que se atora)
+const VERSION    = 'v1.4.3';  // Auto-reparación de turno huérfano (recrea en server con su id, sube lo capturado)
 const SHELL_CACHE = `cashflow-shell-${VERSION}`;
 const CDN_CACHE   = `cashflow-cdn-${VERSION}`;
 const RUNTIME     = `cashflow-runtime-${VERSION}`;

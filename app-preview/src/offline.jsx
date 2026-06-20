@@ -418,6 +418,71 @@ const purgeFailed = async () => {
   return failed.length;
 };
 
+// Reactivar (volver a 'pending', reintentos a 0) las ops encoladas ligadas a
+// un turno. Se usa al reparar un turno huérfano: una vez recreado el turno en
+// el servidor, sus ventas/colabs/pagos que habían quedado 'failed' por la FK
+// ausente deben volver a intentarse. Incluye venta_pagos (referencian venta_id
+// de las ventas encoladas de ese turno).
+const reactivarOpsDeTurno = async (turnoId) => {
+  const all = await _queueAll();
+  // ids de ventas de este turno que estén encoladas (para sus venta_pagos)
+  const ventaIds = new Set(
+    all.filter(x => x.table === 'ventas' && x.payload && x.payload.turno_id === turnoId)
+       .map(x => x.payload.id)
+  );
+  let n = 0;
+  for (const item of all) {
+    const p = item.payload || {};
+    const f = item.filter || {};
+    const ligado =
+      p.turno_id === turnoId || f.turno_id === turnoId || p.id === turnoId ||
+      (item.table === 'venta_pagos' && ventaIds.has(p.venta_id));
+    if (ligado && item.status !== 'syncing') {
+      item.status = 'pending';
+      item.retries = 0;
+      delete item.error;
+      await _queuePut(item);
+      n++;
+    }
+  }
+  if (n > 0) _notifyQueueChange();
+  return n;
+};
+
+// Reparar un turno "huérfano": existe localmente (snapshot/cola) pero NO en el
+// servidor — su insert offline se perdió al chocar con el índice único de "1
+// turno abierto". Lo recreamos en el servidor con su MISMO id para que las
+// ventas/pagos/firmas que apuntan a él dejen de ser huérfanas (FK) y suban
+// solas. No borra ni recaptura nada. Devuelve {ok, error?}.
+const repararTurnoHuerfano = async (turno) => {
+  if (!navigator.onLine || !window.sb) return {ok:false, error:'sin conexión'};
+  if (!turno || !turno.id) return {ok:false, error:'turno sin id'};
+  try {
+    // 1) Recrear el turno con su mismo id (clave para las FK). El folio lo
+    //    asigna el servidor; estado tal cual (normalmente 'abierto').
+    const payload = {
+      id: turno.id,
+      fecha: turno.fecha,
+      hora_inicio: turno.hora_inicio || null,
+      estado: turno.estado || 'abierto',
+      encargada_id: turno.encargada_id || null,
+      abierto_por: turno.abierto_por || turno.encargada_id || null,
+    };
+    const res = await window.sb.from('turnos').insert(payload);
+    // 23505 = ya existe (carrera con otro tab) → lo tomamos como éxito.
+    if (res.error && res.error.code !== '23505') {
+      return {ok:false, error: res.error.message};
+    }
+    // 2) Reactivar las ops ligadas que habían quedado fallidas por la FK.
+    await reactivarOpsDeTurno(turno.id);
+    // 3) Subir lo capturado.
+    await drainQueue();
+    return {ok:true};
+  } catch (e) {
+    return {ok:false, error: String(e.message || e)};
+  }
+};
+
 // Sincronizar UNA operación. Retorna true si OK, false si falló.
 const _syncOne = async (item) => {
   if (!window.sb) return false;
@@ -696,6 +761,7 @@ Object.assign(window, {
   leerCatalogo, consultarCatalogo, refrescarCatalogos,
   // Queue + sync
   enqueue, drainQueue, getPendingCount, getPending, getFailed, purgeFailed,
+  reactivarOpsDeTurno, repararTurnoHuerfano,
   findQueuedById, findQueuedAll, onQueueChange,
   sbInsert, sbUpdate, sbDelete, sbUpsert, genUUID,
   // Snapshot de turno

@@ -44,6 +44,7 @@ const PVTurnoFn = () => {
     let turnoColabsData = [];
     let pagosReales = [];
     let dataFromSnapshot = false;
+    let serverSaysMissing = false; // el servidor respondió "no existe" (no es error de red)
     try {
       const [t, v, tc] = await Promise.all([
         sb.from('turnos').select('*').eq('id', turnoId).single(),
@@ -59,6 +60,10 @@ const PVTurnoFn = () => {
           const {data: pagos} = await sb.from('venta_pagos').select('*').in('venta_id', ventaIds);
           pagosReales = pagos || [];
         }
+      } else if (t.error && t.error.code === 'PGRST116') {
+        // PGRST116 = .single() no encontró filas → el turno NO está en el
+        // servidor (distinto de un error de red, que cae al catch).
+        serverSaysMissing = true;
       }
     } catch (_) { /* offline / network — fallback abajo */ }
 
@@ -99,6 +104,18 @@ const PVTurnoFn = () => {
         ventaPagos: pagosReales,
         turnoColabs: turnoColabsData,
       });
+    }
+
+    // Auto-reparación de turno huérfano: tenemos el turno localmente (snapshot)
+    // pero el servidor dice que NO existe — su creación offline se perdió al
+    // chocar con "1 turno abierto". Con conexión, lo recreamos en el servidor
+    // con su mismo id para que las ventas/pagos/firmas capturados dejen de ser
+    // huérfanos (FK) y suban solos. Sin borrar ni recapturar nada.
+    if (dataFromSnapshot && serverSaysMissing && navigator.onLine && typeof window.repararTurnoHuerfano === 'function') {
+      notify('Recuperando un turno que no se había guardado…', 'warn');
+      const r = await window.repararTurnoHuerfano(turnoData);
+      if (r.ok) notify('Turno recuperado ✓ — subiendo lo capturado a la nube', 'ok');
+      else      notify('No se pudo recuperar el turno automáticamente: ' + (r.error || ''), 'err');
     }
 
     setTurno(turnoData);

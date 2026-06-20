@@ -12,6 +12,17 @@ Bitácora de sesiones de trabajo. Cada sesión deja una entrada con:
 
 ---
 
+## [2026-06-20] Offline · auto-reparación de turno huérfano (FK)
+
+- **Estado:** Branch `claude/funny-cannon-69z13s` (PR #90). Solo frontend. Bump SW a v1.4.3.
+- **Caso (dueño):** 2º corte de internet → se duplicó el turno y al marcar pagar sale error `insert or update ... violates foreign key constraint`. Verificado en server: NO hay turno abierto y 0 huérfanos en BD → el turno (con sus ventas) vive SOLO en la tablet; su insert offline se perdió al chocar con "1 turno abierto", así que `turno_colaboradoras`/ventas apuntan a un `turno_id` inexistente en el server. El dueño pidió repararlo **sin borrar ni recapturar**.
+- **Fix (`offline.jsx` + `fn-pv.jsx`):**
+  - `repararTurnoHuerfano(turno)`: recrea el turno en el server con su **mismo id** (folio lo asigna el server; estado tal cual). Tolera 23505. Luego `reactivarOpsDeTurno` (vuelve a 'pending' las ventas/colabs/pagos ligados que quedaron 'failed' por la FK) y `drainQueue` para subir lo capturado.
+  - `fn-pv.jsx` `cargar()`: detecta `serverSaysMissing` (PGRST116 = .single() sin filas, ≠ error de red). Si el turno vino del **snapshot** pero el server dice que no existe y hay conexión → corre la reparación automáticamente al abrir el PV. Sin borrar ni recapturar.
+- **Para el usuario:** en la tablet, cargar el código nuevo SIN borrar datos (Resetear app / aceptar "nueva versión" — conserva IndexedDB con snapshot+cola), abrir el turno atorado → se auto-repara y sube lo capturado.
+
+---
+
 ## [2026-06-15] Offline · prevenir turno duplicado abierto sin conexión
 
 - **Estado:** Branch `claude/funny-cannon-69z13s` (mismo PR #90). Solo frontend. Bump SW a v1.4.2.
